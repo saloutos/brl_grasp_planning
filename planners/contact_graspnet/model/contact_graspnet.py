@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from pointnet2_utils import PointNetSetAbstractionMsg, PointNetSetAbstraction, PointNetFeaturePropagation
 from mesh_utils import create_gripper
-
+from cgn_utils import *
 
 class ContactGraspnet(nn.Module):
     def __init__(self, global_config, device):
@@ -518,7 +518,7 @@ class ContactGraspnetLoss(nn.Module):
 
             # TODO: Move this to dataloader? 
             pred_grasps = pred_grasps_cam  # B x N x 4 x 4
-            gt_grasps_proj = utils.build_6d_grasp(approach_labels_pc_cam, 
+            gt_grasps_proj = build_6d_grasp(approach_labels_pc_cam, 
                                                             dir_labels_pc_cam, 
                                                             pred_points, 
                                                             thickness_gt, 
@@ -707,9 +707,9 @@ class ContactGraspnetLoss(nn.Module):
             k=nsample, dim=2, largest=False, sorted=False)
 
         # -- Group labels -- #
-        grouped_contact_dirs_cam = utils.index_points(pos_contact_dirs_cam, close_contact_pt_idcs)  # B x N x k x 3
-        grouped_finger_diffs = utils.index_points(pos_finger_diffs, close_contact_pt_idcs)  # B x N x k x 1
-        grouped_approach_dirs_cam = utils.index_points(pos_approach_dirs_cam, close_contact_pt_idcs)  # B x N x k x 3
+        grouped_contact_dirs_cam = index_points(pos_contact_dirs_cam, close_contact_pt_idcs)  # B x N x k x 3
+        grouped_finger_diffs = index_points(pos_finger_diffs, close_contact_pt_idcs)  # B x N x k x 1
+        grouped_approach_dirs_cam = index_points(pos_approach_dirs_cam, close_contact_pt_idcs)  # B x N x k x 3
 
         # grouped_contact_dirs_cam = pos_contact_dirs_cam[close_contact_pt_idcs, :]  # B x N x k x 3
         # grouped_finger_diffs = pos_finger_diffs[close_contact_pt_idcs]  # B x N x k x 1
