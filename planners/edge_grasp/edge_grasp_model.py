@@ -117,10 +117,15 @@ class EdgeGrasp:
         edge_sample_index = all_edge_index[geometry_mask]
         print('Number of candidates after checking table collisions: ', len(edge_sample_index))
 
+        # TODO: put the maximum number of sample points in the config file
+        MAX_NUM_EDGES = 200
+
+        pred_grasps, grasp_scores, gripper_widths = {}, {}, {}
+
         # actually evaluate model for these edges
         if len(edge_sample_index) > 0:
-            if len(edge_sample_index) > 1500:
-                edge_sample_index = edge_sample_index[torch.randperm(len(edge_sample_index))[:1500]]
+            if len(edge_sample_index) > MAX_NUM_EDGES:
+                edge_sample_index = edge_sample_index[torch.randperm(len(edge_sample_index))[:MAX_NUM_EDGES]]
             edge_sample_index, _ = torch.sort(edge_sample_index)
             data = Data(pos=pos, normals=normals, sample=sample, radius_p_index=radius_p_index,
                         ball_batch=radius_p_batch,
@@ -131,30 +136,46 @@ class EdgeGrasp:
             data = data.to(self.device)
             score, depth_projection, approaches, sample_pos, des_normals = self.model.act(data)
 
-            # pull out parameters of best grasp
-            k_score, max_index = torch.topk(score, k=1)
-            selected_edge = edges[edge_sample_index[max_index],:]
-            max_score = score[max_index]
-            max_score = F.sigmoid(max_score).cpu().numpy()
-            print('Best grasp score: ', max_score)
-            if max_score.any() < 0.85:
-                print('No high score, should skip scene.')
+            # select grasps based on threshold
+            # TODO: put this threshold in config file?
+            SELECTION_THRESHOLD = 0.0
+            all_scores = F.sigmoid(score)
+            grasp_mask = (all_scores > SELECTION_THRESHOLD)
 
-            grasp_mask = torch.ones(len(depth_projection)) > 2.
-            grasp_mask[max_index] = True
-            trans_matrix = orthogonal_grasps(grasp_mask.to(des_normals.device), depth_projection, approaches,
-                                            des_normals, sample_pos)
-            trans_matrix = trans_matrix.cpu().numpy()
+            masked_poses = orthogonal_grasps(grasp_mask, depth_projection, approaches, des_normals, sample_pos)
+            masked_scores = all_scores[grasp_mask]
 
-            # calculate grasp width
+            # calculate grasp widths
             widths = torch.abs(torch.sum(data.relative_pos * des_normals, dim=-1)) + 0.016
             widths = widths[grasp_mask].clip(max=0.04)
-            widths = (widths * 2).cpu().numpy()
+            widths = (widths * 2)
+
+            # move to CPU
+            # NOTE: dict key -1 is to match CGN implementation, in case we feed in segmented point clouds later
+            pred_grasps[-1] = masked_poses.detach().cpu().numpy()
+            grasp_scores[-1] = masked_scores.detach().cpu().numpy()
+            gripper_widths[-1] = widths.detach().cpu().numpy()
+
+            # # pull out parameters of best grasp
+            # k_score, max_index = torch.topk(score, k=1)
+            # selected_edge = edges[edge_sample_index[max_index],:]
+            # max_score = score[max_index]
+            # max_score = F.sigmoid(max_score).cpu().numpy()
+            # print('Best grasp score: ', max_score)
+            # if max_score.any() < 0.85:
+            #     print('No high score, should skip scene.')
+            # grasp_mask = torch.ones(len(depth_projection)) > 2.
+            # grasp_mask[max_index] = True
+            # trans_matrix = orthogonal_grasps(grasp_mask.to(des_normals.device), depth_projection, approaches,
+            #                                 des_normals, sample_pos)
+            # trans_matrix = trans_matrix.cpu().numpy()
+
+            
 
         else:
             print('No candidates without collisions.')
 
-
+        return pred_grasps, grasp_scores, gripper_widths
 
 
 

@@ -165,33 +165,33 @@ pcd_world = copy.deepcopy(pcd_cam).transform(cam_extrinsics)
 # o3d.visualization.draw_geometries([pcd])
 
 ### CONTACT GRASPNET
-# print('')
-# print('')
-# print('EVALUATING CONTACT GRASPNET')
-# # load grasp generation model
-# # TODO: clean up this yaml file
-# with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
-#     cgn_config = yaml.safe_load(f)
-# # set forward passes to 1 TODO: is this necessary?
-# cgn_config['OPTIMIZER']['batch_size'] = int(1)
-# # set model path here just in case
-# cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
-# # create model (weights are loaded in init)
-# cgn = ContactGraspNet(cgn_config)
-# # generate grasp candidates
-# # TODO: pass in grasp success threshold?
-# print('Generating Grasps...')
-# pred_grasps_cam, scores, contact_pts, pred_grasp_widths = cgn.predict_scene_grasps(pcd_cam,
-#                                                                     pc_segments={},
-#                                                                     local_regions=False,
-#                                                                     filter_grasps=True,
-#                                                                     forward_passes=1)
-# # TODO: any post-processing? putting grasps back in world frame? and point cloud?
-# # visualize grasps
-# visualize_grasps(pcd_cam, pred_grasps_cam, scores,
-#                 window_name = 'ContactGraspNet',
-#                 plot_opencv_cam=True,
-#                 gripper_openings=None)
+print('')
+print('')
+print('EVALUATING CONTACT GRASPNET')
+# load grasp generation model
+# TODO: clean up this yaml file
+with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
+    cgn_config = yaml.safe_load(f)
+# set forward passes to 1 TODO: is this necessary?
+cgn_config['OPTIMIZER']['batch_size'] = int(1)
+# set model path here just in case
+cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
+# create model (weights are loaded in init)
+cgn = ContactGraspNet(cgn_config)
+# generate grasp candidates
+# TODO: pass in grasp success threshold?
+print('Generating Grasps...')
+cgn_grasp_poses_cam, cgn_scores, cgn_contact_pts, cgn_grasp_widths = cgn.predict_scene_grasps(pcd_cam,
+                                                                    pc_segments={},
+                                                                    local_regions=False,
+                                                                    filter_grasps=True,
+                                                                    forward_passes=1)
+# TODO: any post-processing? putting grasps back in world frame? and point cloud?
+# visualize grasps
+visualize_grasps(pcd_cam, cgn_grasp_poses_cam, cgn_scores,
+                window_name = 'ContactGraspNet',
+                plot_origin=True,
+                gripper_openings=None)
 
 
 ### EDGE GRASP
@@ -204,17 +204,13 @@ with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
 edge_grasp = EdgeGrasp(edge_grasp_config)
 
 # generate grasp candidates
-edge_grasp.predict_scene_grasps(pcd_world)
+edge_grasp_poses_world, edge_grasp_scores, edge_grasp_widths = edge_grasp.predict_scene_grasps(pcd_world)
 
-# some pre-processing:
-# create tsdf (point cloud in world frame?)
-# other processing (remove outliers, estimate normals, downsample voxels, all done with open3d?)
-
-
-
-
-
-
+# visualize grasps
+visualize_grasps(pcd_world, edge_grasp_poses_world, edge_grasp_scores,
+                window_name = 'EdgeGrasp',
+                plot_origin=True,
+                gripper_openings=None)
 
 
 ### GIGA
