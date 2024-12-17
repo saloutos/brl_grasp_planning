@@ -1,0 +1,11 @@
+DATA:
+  checkpoint_path: /planners/contact_graspnet/checkpoints/model.pt
+LOSS:
+  min_geom_loss_divisor: 1.0
+MODEL:
+  asymmetric_model: true
+OPTIMIZER:
+  adds_gt2pred_loss_weight: 1
+TEST:
+  allow_zero_margin: 0
+

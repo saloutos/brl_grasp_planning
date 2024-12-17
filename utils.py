@@ -142,7 +142,7 @@ def depth2pc(depth, K, rgb=None):
 
 ### GRASP PLOTTING STUFF ###
 
-def visualize_grasps(full_pc, pred_grasps_cam, scores, window_name='Open3D', plot_opencv_cam=False, pc_colors=None, gripper_openings=None, gripper_width=0.08,
+def visualize_grasps(pcd_cam, pred_grasps_cam, scores, window_name='Open3D', plot_opencv_cam=False, gripper_openings=None, gripper_width=0.08,
                         T_world_cam=np.eye(4), plot_others=[]):
     """Visualizes colored point cloud and predicted grasps. If given, colors grasps by segmap regions.
     Thick grasp is most confident per segment. For scene point cloud predictions, colors grasps according to confidence.
@@ -160,13 +160,10 @@ def visualize_grasps(full_pc, pred_grasps_cam, scores, window_name='Open3D', plo
     """
 
     print('Visualizing...')
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(full_pc)
-    pcd.colors = o3d.utility.Vector3dVector(pc_colors / 255.0)
 
     vis = o3d.visualization.Visualizer()
     vis.create_window(window_name=window_name)
-    vis.add_geometry(pcd)
+    vis.add_geometry(pcd_cam)
 
     if plot_opencv_cam:
         plot_coordinates(vis, np.zeros(3,),np.eye(3,3), central_color=(0.5, 0.5, 0.5))

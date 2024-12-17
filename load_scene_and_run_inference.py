@@ -10,9 +10,14 @@ import time
 import matplotlib.pyplot as plt
 import open3d as o3d
 import yaml
+import copy
 
 from planners.contact_graspnet.cgn_model import ContactGraspNet
+from planners.edge_grasp.edge_grasp_model import EdgeGrasp
 from utils import *
+
+# TODO: load some global config stuff here? scene, table boundaries, etc
+
 
 # Initialize GLFW and OpenCV window
 glfw.init()
@@ -125,16 +130,20 @@ cam_extrinsics = cam_extrinsics @ T_camzforward_cam
 k_d405_640x480 = np.array([[382.418, 0, 320], [0, 382.418, 240], [0, 0, 1]])
 pc_xyz, pc_rgb = depth2pc(depth_array, k_d405_640x480, rgb_array)
 
+# TODO: convert PC to world frame
+
+# TODO: filter PC based on bounding box in world frame
 # filter pc based on z-range
 if rgb_array is not None:
     pc_rgb = pc_rgb[(pc_xyz[:,2] < Z_RANGE[1]) & (pc_xyz[:,2] > Z_RANGE[0])]
 pc_xyz = pc_xyz[(pc_xyz[:,2] < Z_RANGE[1]) & (pc_xyz[:,2] > Z_RANGE[0])]
 
-# # for visualization
-# pcd = o3d.geometry.PointCloud()
-# pcd.points = o3d.utility.Vector3dVector(pc_xyz)
-# if rgb_array is not None:
-#     pcd.colors = o3d.utility.Vector3dVector(pc_rgb / 255.0)
+pcd_cam = o3d.geometry.PointCloud()
+pcd_cam.points = o3d.utility.Vector3dVector(pc_xyz)
+if rgb_array is not None:
+    pcd_cam.colors = o3d.utility.Vector3dVector(pc_rgb / 255.0)
+
+pcd_world = copy.deepcopy(pcd_cam).transform(cam_extrinsics)
 
 # # Convert RGB to BGR for OpenCV
 # bgr_image = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
@@ -155,31 +164,76 @@ pc_xyz = pc_xyz[(pc_xyz[:,2] < Z_RANGE[1]) & (pc_xyz[:,2] > Z_RANGE[0])]
 # # Show point cloud
 # o3d.visualization.draw_geometries([pcd])
 
-# load grasp generation model
-# TODO: clean up this yaml file
-with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
-    global_config = yaml.safe_load(f)
-# set forward passes to 1 TODO: is this necessary?
-global_config['OPTIMIZER']['batch_size'] = int(1)
-# set model path here just in case
-global_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
-# create model (weights are loaded in init)
-cgn = ContactGraspNet(global_config)
+### CONTACT GRASPNET
+# print('')
+# print('')
+# print('EVALUATING CONTACT GRASPNET')
+# # load grasp generation model
+# # TODO: clean up this yaml file
+# with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
+#     cgn_config = yaml.safe_load(f)
+# # set forward passes to 1 TODO: is this necessary?
+# cgn_config['OPTIMIZER']['batch_size'] = int(1)
+# # set model path here just in case
+# cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
+# # create model (weights are loaded in init)
+# cgn = ContactGraspNet(cgn_config)
+# # generate grasp candidates
+# # TODO: pass in grasp success threshold?
+# print('Generating Grasps...')
+# pred_grasps_cam, scores, contact_pts, pred_grasp_widths = cgn.predict_scene_grasps(pcd_cam,
+#                                                                     pc_segments={},
+#                                                                     local_regions=False,
+#                                                                     filter_grasps=True,
+#                                                                     forward_passes=1)
+# # TODO: any post-processing? putting grasps back in world frame? and point cloud?
+# # visualize grasps
+# visualize_grasps(pcd_cam, pred_grasps_cam, scores,
+#                 window_name = 'ContactGraspNet',
+#                 plot_opencv_cam=True,
+#                 gripper_openings=None)
+
+
+### EDGE GRASP
+print('')
+print('')
+print('EVALUATING EDGE GRASP')
+# load model
+with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
+    edge_grasp_config = yaml.safe_load(f)
+edge_grasp = EdgeGrasp(edge_grasp_config)
 
 # generate grasp candidates
-# TODO: pass in grasp success threshold?
-print('Generating Grasps...')
-pred_grasps_cam, scores, contact_pts, pred_grasp_widths = cgn.predict_scene_grasps(pc_xyz,
-                                                                    pc_segments={},
-                                                                    local_regions=False,
-                                                                    filter_grasps=True,
-                                                                    forward_passes=1)
+edge_grasp.predict_scene_grasps(pcd_world)
 
-# TODO: any post-processing? putting grasps back in world frame? and point cloud?
+# some pre-processing:
+# create tsdf (point cloud in world frame?)
+# other processing (remove outliers, estimate normals, downsample voxels, all done with open3d?)
 
-# visualize grasps
-visualize_grasps(pc_xyz, pred_grasps_cam, scores,
-                window_name = 'ContactGraspNet',
-                plot_opencv_cam=True,
-                pc_colors=pc_rgb,
-                gripper_openings=None)
+
+
+
+
+
+
+
+### GIGA
+
+
+
+
+
+
+
+
+
+
+
+
+
+### GRASPNESS
+
+
+
+
+

@@ -43,7 +43,7 @@ class ContactGraspNet:
         self.model.load_state_dict(model_state_dict)
 
     # run model for entire scene
-    def predict_scene_grasps(self, pc_full, pc_segments={}, local_regions=False, filter_grasps=False, forward_passes=1, use_cam_boxes=True):
+    def predict_scene_grasps(self, pcd_cam, pc_segments={}, local_regions=False, filter_grasps=False, forward_passes=1, use_cam_boxes=True):
         """
         Predict num_point grasps on a full point cloud or in local box regions around point cloud segments.
 
@@ -60,6 +60,7 @@ class ContactGraspNet:
         Returns:
             [np.ndarray, np.ndarray, np.ndarray, np.ndarray] -- pred_grasps_cam, scores, contact_pts, gripper_openings
         """
+        pc_full = np.asarray(pcd_cam.points)
         pred_grasps_cam, scores, contact_pts, gripper_openings = {}, {}, {}, {}
         # Predict grasps in local regions or full pc
         if local_regions:
