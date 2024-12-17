@@ -1,6 +1,7 @@
 DATA:
   classes: null
   data_path: /home/user/Documents/grasp_generation/contact_graspnet_pytorch/acronym/
+  checkpoint_path: /planners/contact_graspnet/checkpoints/model.pt
   depth_augm:
     clip: 0.005
     gaussian_kernel: 0

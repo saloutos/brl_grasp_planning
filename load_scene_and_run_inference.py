@@ -9,24 +9,10 @@ import cv2
 import time
 import matplotlib.pyplot as plt
 import open3d as o3d
-
-from planners.contact_graspnet.cgn_model import ContactGraspNet
 import yaml
 
-from utils import load_random_grid_ycb, get_base_path, depth2pc
-
-def get_depth_display(depth_array):
-    depth_display = (depth_array - depth_array.min()) / (depth_array.max() - depth_array.min())
-    depth_display = (depth_display * 255).astype(np.uint8)  # Scale to 0-255 for display
-    depth_display_colored = cv2.applyColorMap(depth_display, cv2.COLORMAP_JET)  # Apply a color map
-    return depth_display_colored
-
-def raw_to_metric_depth(raw_depth, near, far):
-    """
-    Convert raw depth values to metric depth values
-    https://github.com/google-deepmind/dm_control/blob/main/dm_control/mujoco/engine.py#L817
-    """
-    return near / (1 - raw_depth * (1 - near / far))
+from planners.contact_graspnet.cgn_model import ContactGraspNet
+from utils import *
 
 # Initialize GLFW and OpenCV window
 glfw.init()
@@ -78,7 +64,6 @@ n_grasps  = 0
 n_frame_geoms = 0
 cam_vis_idx = None
 
-
 # Step the simulation several times
 mujoco.mj_step(model, data)
 # update gripper pose and finger width
@@ -111,7 +96,11 @@ mujoco.mjr_readPixels(rgb_array, depth_array, viewport, gl_context)
 rgb_array = np.flipud(rgb_array)
 depth_array = np.flipud(depth_array)
 depth_array = raw_to_metric_depth(depth_array, near, far)
-depth_array_clipped = np.clip(depth_array, 0.4, 1.2)
+
+# TODO: where is the best place to put this?
+Z_RANGE = [0.4, 1.2]
+
+depth_array_clipped = np.clip(depth_array, Z_RANGE[0], Z_RANGE[1])
 
 # --- Process image --- #
 image = rgb_array
@@ -134,11 +123,18 @@ cam_extrinsics = cam_extrinsics @ T_camzforward_cam
 
 # get point cloud
 k_d405_640x480 = np.array([[382.418, 0, 320], [0, 382.418, 240], [0, 0, 1]])
-pc = depth2pc(depth_array, k_d405_640x480, rgb_array)
+pc_xyz, pc_rgb = depth2pc(depth_array, k_d405_640x480, rgb_array)
+
+# filter pc based on z-range
+if rgb_array is not None:
+    pc_rgb = pc_rgb[(pc_xyz[:,2] < Z_RANGE[1]) & (pc_xyz[:,2] > Z_RANGE[0])]
+pc_xyz = pc_xyz[(pc_xyz[:,2] < Z_RANGE[1]) & (pc_xyz[:,2] > Z_RANGE[0])]
+
+# for visualization
 pcd = o3d.geometry.PointCloud()
-pcd.points = o3d.utility.Vector3dVector(pc[0])
-if pc[1] is not None:
-    pcd.colors = o3d.utility.Vector3dVector(pc[1] / 255.0)
+pcd.points = o3d.utility.Vector3dVector(pc_xyz)
+if rgb_array is not None:
+    pcd.colors = o3d.utility.Vector3dVector(pc_rgb / 255.0)
 
 # Convert RGB to BGR for OpenCV
 bgr_image = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
@@ -157,85 +153,29 @@ cv2.destroyAllWindows()
 glfw.terminate()
 
 # Show point cloud
-# o3d.visualization.draw_geometries([pcd])
-
-
-
+o3d.visualization.draw_geometries([pcd])
 
 # load grasp generation model
+# TODO: clean up this yaml file
 with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
     global_config = yaml.safe_load(f)
-# set forward passes to 1
+# set forward passes to 1 TODO: is this necessary?
 global_config['OPTIMIZER']['batch_size'] = int(1)
+# set model path here just in case
+global_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
+# create model (weights are loaded in init)
 cgn = ContactGraspNet(global_config)
 
-# TODO: Load the weights
-
-
-# TODO: process point cloud?
-# # We set the camera intrinsic matrix to be the same as the D405 when we
-# # create the camera in the aloha.xml
-# pc_full, pc_segments, pc_colors = grasp_estimator.extract_point_clouds(
-#     depth_array,
-#     # depth_inferred,
-#     k_d405_640x480,
-#     segmap=None,
-#     rgb=image,
-#     skip_border_objects=False,
-#     z_range=[0.05, 1.0],
-# )
-
 # generate grasp candidates
+# TODO: pass in grasp success threshold?
 print('Generating Grasps...')
-pred_grasps_cam, scores, contact_pts, _ = cgn.predict_scene_grasps(pc[0],
+pred_grasps_cam, scores, contact_pts, pred_grasp_widths = cgn.predict_scene_grasps(pc_xyz,
                                                                     pc_segments={},
                                                                     local_regions=False,
                                                                     filter_grasps=True,
                                                                     forward_passes=1)
 
+# TODO: any post-processing? putting grasps back in world frame? and point cloud?
 
-# any post-processing?
-# putting grasps back in world frame
-
-# # visualize grasps
-
-# TODO: put this function in high-level utils
-# visualize_grasps(pc_full, pred_grasps_cam, scores, plot_opencv_cam=True, pc_colors=pc_colors)
-
-
-# # -- Plot grasps -- #
-# cm2 = plt.get_cmap('viridis')
-# n_grasps = 0
-# n_frame_geoms = 0
-# for i, k in enumerate(pred_grasps_cam):
-#     if np.any(pred_grasps_cam[k]):
-#         grasps = pred_grasps_cam[k]
-#         # grasps are T_cam_final_grasp
-#         # cam_extrinsics is T_world_cam
-#         # I want T_world_finalgrasp
-#         for i in range(len(grasps)):
-#             grasps[i] = cam_extrinsics @ grasps[i]
-#         # grasps_world = np.einsum("ijk, kl->ijl", grasps, cam_extrinsics)
-#         # grasps_world = np.einsum("ijk, lj->ilk", grasps, np.linalg.inv(cam_extrinsics))
-#         grasps_world = grasps
-#         max_score = np.max(scores[k])
-#         min_score = np.min(scores[k])
-#         topk_idx = np.argsort(scores[k])
-#         # max_idx = np.argmax(scores[k])
-#         # best_grasp = grasps_world[max_idx]
-#         colors = [cm2((score - min_score) / (max_score - min_score))[:3] for score in scores[k]]
-#         for grasp, color in zip(grasps_world, colors):
-#             rgba = list(color) + [1]
-#             draw_grasp(viewer.user_scn, grasp, 0.1, rgba)
-#             n_grasps += 1
-
-
-
-
-
-
-
-
-
-
-
+# visualize grasps
+visualize_grasps(pc_xyz, pred_grasps_cam, scores, plot_opencv_cam=True, pc_colors=pc_rgb, gripper_openings=None)

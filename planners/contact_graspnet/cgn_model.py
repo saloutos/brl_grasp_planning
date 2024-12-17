@@ -18,10 +18,29 @@ class ContactGraspNet:
     """
     def __init__(self, cfg):
         self._contact_grasp_cfg = cfg
+
+        # TODO: move this to where it is actually used?
         self._num_input_points = self._contact_grasp_cfg['DATA']['raw_num_points'] if 'raw_num_points' in self._contact_grasp_cfg['DATA'] else self._contact_grasp_cfg['DATA']['num_point']
+
+        # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.model = ContactGraspnetModel(cfg, self.device)
         self.model.to(self.device)
+        # load weights
+        checkpoint_state_dict = torch.load(self._contact_grasp_cfg['DATA']['checkpoint_path'], weights_only=False)
+        model_state_dict = self.model.state_dict()
+        for k, v in model_state_dict.items():
+            if k in checkpoint_state_dict['model'].keys():
+                model_state_dict[k] = checkpoint_state_dict['model'][k]
+            else:
+                print('Warning: Could not find %s in checkpoint!' % k)
+        # TODO: not sure what the scalars are used for?
+        scalars = {}
+        for k, v in checkpoint_state_dict.items():
+            if k != 'model':
+                scalars[k] = v
+        # put loaded weights in model
+        self.model.load_state_dict(model_state_dict)
 
     # run model for entire scene
     def predict_scene_grasps(self, pc_full, pc_segments={}, local_regions=False, filter_grasps=False, forward_passes=1, use_cam_boxes=True):
