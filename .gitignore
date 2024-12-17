@@ -3,3 +3,5 @@ __pycache__/
 MUJOCO_LOG.TXT
 
 ycb/
+
+planners/graspness/checkpoints/

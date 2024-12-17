@@ -130,9 +130,7 @@ cam_extrinsics = cam_extrinsics @ T_camzforward_cam
 k_d405_640x480 = np.array([[382.418, 0, 320], [0, 382.418, 240], [0, 0, 1]])
 pc_xyz, pc_rgb = depth2pc(depth_array, k_d405_640x480, rgb_array)
 
-# TODO: convert PC to world frame
-
-# TODO: filter PC based on bounding box in world frame
+# TODO: filter PC based on bounding box in world frame??
 # filter pc based on z-range
 if rgb_array is not None:
     pc_rgb = pc_rgb[(pc_xyz[:,2] < Z_RANGE[1]) & (pc_xyz[:,2] > Z_RANGE[0])]
@@ -143,7 +141,9 @@ pcd_cam.points = o3d.utility.Vector3dVector(pc_xyz)
 if rgb_array is not None:
     pcd_cam.colors = o3d.utility.Vector3dVector(pc_rgb / 255.0)
 
+# convert PC to world frame
 pcd_world = copy.deepcopy(pcd_cam).transform(cam_extrinsics)
+
 
 # # Convert RGB to BGR for OpenCV
 # bgr_image = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
@@ -164,7 +164,7 @@ pcd_world = copy.deepcopy(pcd_cam).transform(cam_extrinsics)
 # # Show point cloud
 # o3d.visualization.draw_geometries([pcd])
 
-### CONTACT GRASPNET
+### CONTACT GRASPNET ###
 print('')
 print('')
 print('EVALUATING CONTACT GRASPNET')
@@ -172,15 +172,13 @@ print('EVALUATING CONTACT GRASPNET')
 # TODO: clean up this yaml file
 with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
     cgn_config = yaml.safe_load(f)
-# set forward passes to 1 TODO: is this necessary?
 cgn_config['OPTIMIZER']['batch_size'] = int(1)
-# set model path here just in case
 cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
-# create model (weights are loaded in init)
 cgn = ContactGraspNet(cgn_config)
 # generate grasp candidates
-# TODO: pass in grasp success threshold?
+# TODO: pass in grasp success threshold? take threshold from config file?
 print('Generating Grasps...')
+# TODO: is dict with key -1 best way to return these values??
 cgn_grasp_poses_cam, cgn_scores, cgn_contact_pts, cgn_grasp_widths = cgn.predict_scene_grasps(pcd_cam,
                                                                     pc_segments={},
                                                                     local_regions=False,
@@ -194,7 +192,7 @@ visualize_grasps(pcd_cam, cgn_grasp_poses_cam, cgn_scores,
                 gripper_openings=None)
 
 
-### EDGE GRASP
+### EDGE GRASP ###
 print('')
 print('')
 print('EVALUATING EDGE GRASP')
@@ -202,10 +200,8 @@ print('EVALUATING EDGE GRASP')
 with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
     edge_grasp_config = yaml.safe_load(f)
 edge_grasp = EdgeGrasp(edge_grasp_config)
-
 # generate grasp candidates
 edge_grasp_poses_world, edge_grasp_scores, edge_grasp_widths = edge_grasp.predict_scene_grasps(pcd_world)
-
 # visualize grasps
 visualize_grasps(pcd_world, edge_grasp_poses_world, edge_grasp_scores,
                 window_name = 'EdgeGrasp',
@@ -213,7 +209,19 @@ visualize_grasps(pcd_world, edge_grasp_poses_world, edge_grasp_scores,
                 gripper_openings=None)
 
 
-### GIGA
+
+
+
+
+### GRASPNESS ###
+print('')
+print('')
+print('EVALUATING GRASPNESS')
+# load model
+
+# generate grasp candidates
+
+# visualize grasps
 
 
 
@@ -221,13 +229,19 @@ visualize_grasps(pcd_world, edge_grasp_poses_world, edge_grasp_scores,
 
 
 
+### GIGA ###
+print('')
+print('')
+print('EVALUATING GIGA')
+# load model
+
+# generate grasp candidates
+
+# visualize grasps
 
 
 
 
-
-
-### GRASPNESS
 
 
 

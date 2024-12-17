@@ -62,13 +62,12 @@ def get_gripper_points_mask(trans, z_threshold=0.053):
 
 def get_gripper_points(trans):
     gripper_points_sim = torch.tensor([[0, 0, -0.02, ],
-                                       [0.012, -0.09, 0.015, ],
-                                       [-0.012, -0.09, 0.015, ],
-                                       [0.012, 0.09, 0.015, ],
-                                       [-0.012, 0.09, 0.015, ],
-
-                                       [0.005, 0.09, 0.078,],
-                                       [0.005, -0.09, 0.078,]]).to(torch.float).to(trans.device)
+                                        [0.012, -0.09, 0.015, ],
+                                        [-0.012, -0.09, 0.015, ],
+                                        [0.012, 0.09, 0.015, ],
+                                        [-0.012, 0.09, 0.015, ],
+                                        [0.005, 0.09, 0.078,],
+                                        [0.005, -0.09, 0.078,]]).to(torch.float).to(trans.device)
 
     num_p = gripper_points_sim.size(0)
     gripper_points_sim = gripper_points_sim.unsqueeze(dim=0).repeat(len(trans),1,1)
@@ -77,28 +76,28 @@ def get_gripper_points(trans):
     gripper_points_sim = gripper_points_sim + trans[:,:3,-1].unsqueeze(dim=1).repeat(1,num_p,1)
     return gripper_points_sim
 
-def sample_grasp_point(point_cloud, finger_depth=0.05, eps=0.1):
-    points = np.asarray(point_cloud.points)
-    normals = np.asarray(point_cloud.normals)
-    ok = False
-    while not ok:
-        # TODO this could result in an infinite loop, though very unlikely
-        idx = np.random.randint(len(points))
-        point, normal = points[idx], normals[idx]
-        ok = normal[2] > -0.1  # make sure the normal is poitning upwards
-    grasp_depth = np.random.uniform(-eps * finger_depth, (1.0 + eps) * finger_depth)
-    point = point + normal * grasp_depth # match the tcp point
-    z_axis = -normal
-    x_axis = np.r_[1.0, 0.0, 0.0]
-    if np.isclose(np.abs(np.dot(x_axis, z_axis)), 1.0, 1e-4):
-        x_axis = np.r_[0.0, 1.0, 0.0]
-    y_axis = np.cross(z_axis, x_axis)
-    x_axis = np.cross(y_axis, z_axis)
-    R = Rotation.from_matrix(np.vstack((x_axis, y_axis, z_axis)).T)
-    # try to grasp with a random yaw angles
-    yaws = np.linspace(0.0, np.pi, 12, endpoint=False)
-    idx = np.random.randint(len(yaws))
-    yaw = yaws[idx]
-    ori = R * Rotation.from_euler("z", yaw)
-    pose = Transform(ori, point).as_matrix()[np.newaxis,...]
-    return pose
+# def sample_grasp_point(point_cloud, finger_depth=0.05, eps=0.1):
+#     points = np.asarray(point_cloud.points)
+#     normals = np.asarray(point_cloud.normals)
+#     ok = False
+#     while not ok:
+#         # TODO this could result in an infinite loop, though very unlikely
+#         idx = np.random.randint(len(points))
+#         point, normal = points[idx], normals[idx]
+#         ok = normal[2] > -0.1  # make sure the normal is poitning upwards
+#     grasp_depth = np.random.uniform(-eps * finger_depth, (1.0 + eps) * finger_depth)
+#     point = point + normal * grasp_depth # match the tcp point
+#     z_axis = -normal
+#     x_axis = np.r_[1.0, 0.0, 0.0]
+#     if np.isclose(np.abs(np.dot(x_axis, z_axis)), 1.0, 1e-4):
+#         x_axis = np.r_[0.0, 1.0, 0.0]
+#     y_axis = np.cross(z_axis, x_axis)
+#     x_axis = np.cross(y_axis, z_axis)
+#     R = Rotation.from_matrix(np.vstack((x_axis, y_axis, z_axis)).T)
+#     # try to grasp with a random yaw angles
+#     yaws = np.linspace(0.0, np.pi, 12, endpoint=False)
+#     idx = np.random.randint(len(yaws))
+#     yaw = yaws[idx]
+#     ori = R * Rotation.from_euler("z", yaw)
+#     pose = Transform(ori, point).as_matrix()[np.newaxis,...]
+#     return pose

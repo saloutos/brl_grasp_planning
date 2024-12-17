@@ -2,10 +2,3 @@ DATA:
   checkpoint_path: /planners/contact_graspnet/checkpoints/model.pt
 MODEL:
   asymmetric_model: true
-
-
-
-
-
-
-

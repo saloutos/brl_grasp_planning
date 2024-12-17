@@ -14,10 +14,11 @@ import open3d as o3d
 
 from .edge_grasp_utils import *
 
+# TODO: DUPLICATE FOR VN EDGE GRASP?
 
 ### CLASS TO EVALUATE EDGE GRASP, PERFORM PRE AND POST PROCESSING OF DATA ###
 
-# NOTE: structure of oroginal edge grasper seemed really nice for training, testing, saving, loading, etc!
+# NOTE: structure of original edge grasper seemed really nice for training, testing, saving, loading, etc!
 class EdgeGrasp:
     def __init__(self, cfg) :
         self._edge_grasp_cfg = cfg
@@ -25,7 +26,7 @@ class EdgeGrasp:
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        # these things should be in config file
+        # TODO: these things should be in config file
         sample_num = 32
         position_emd = True
         lr = 1e-5
@@ -156,6 +157,8 @@ class EdgeGrasp:
             grasp_scores[-1] = masked_scores.detach().cpu().numpy()
             gripper_widths[-1] = widths.detach().cpu().numpy()
 
+            # TODO: why was original code sampling grasp point here?
+
             # # pull out parameters of best grasp
             # k_score, max_index = torch.topk(score, k=1)
             # selected_edge = edges[edge_sample_index[max_index],:]
@@ -169,8 +172,6 @@ class EdgeGrasp:
             # trans_matrix = orthogonal_grasps(grasp_mask.to(des_normals.device), depth_projection, approaches,
             #                                 des_normals, sample_pos)
             # trans_matrix = trans_matrix.cpu().numpy()
-
-            
 
         else:
             print('No candidates without collisions.')
