@@ -2,6 +2,9 @@ import numpy as np
 import mujoco
 import time
 import os
+import trimesh
+import trimesh.transformations as tra
+import open3d as o3d
 
 # TODO: get rid of this function
 def get_base_path():

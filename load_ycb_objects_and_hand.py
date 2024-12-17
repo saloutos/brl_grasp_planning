@@ -34,9 +34,6 @@ spec = mujoco.MjSpec.from_file(scene_path)
 # np.random.seed(0)
 load_random_grid_ycb(spec, 4)
 
-
-
-
 model = spec.compile()
 data = mujoco.MjData(model)
 
