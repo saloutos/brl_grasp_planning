@@ -130,30 +130,30 @@ if rgb_array is not None:
     pc_rgb = pc_rgb[(pc_xyz[:,2] < Z_RANGE[1]) & (pc_xyz[:,2] > Z_RANGE[0])]
 pc_xyz = pc_xyz[(pc_xyz[:,2] < Z_RANGE[1]) & (pc_xyz[:,2] > Z_RANGE[0])]
 
-# for visualization
-pcd = o3d.geometry.PointCloud()
-pcd.points = o3d.utility.Vector3dVector(pc_xyz)
-if rgb_array is not None:
-    pcd.colors = o3d.utility.Vector3dVector(pc_rgb / 255.0)
+# # for visualization
+# pcd = o3d.geometry.PointCloud()
+# pcd.points = o3d.utility.Vector3dVector(pc_xyz)
+# if rgb_array is not None:
+#     pcd.colors = o3d.utility.Vector3dVector(pc_rgb / 255.0)
 
-# Convert RGB to BGR for OpenCV
-bgr_image = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
+# # Convert RGB to BGR for OpenCV
+# bgr_image = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
 
-# Display the image in the OpenCV window
-cv2.imshow("MuJoCo Camera", bgr_image)
+# # Display the image in the OpenCV window
+# cv2.imshow("MuJoCo Camera", bgr_image)
 
-# Show depth image
-depth_array_colored = get_depth_display(depth_array_clipped)
-cv2.imshow("Depth Map", depth_array_colored)
+# # Show depth image
+# depth_array_colored = get_depth_display(depth_array_clipped)
+# cv2.imshow("Depth Map", depth_array_colored)
 
-# wait until button press while focused on opencv window
-cv2.waitKey(0)
-# Clean up OpenCV and GLFW
-cv2.destroyAllWindows()
-glfw.terminate()
+# # wait until button press while focused on opencv window
+# cv2.waitKey(0)
+# # Clean up OpenCV and GLFW
+# cv2.destroyAllWindows()
+# glfw.terminate()
 
-# Show point cloud
-o3d.visualization.draw_geometries([pcd])
+# # Show point cloud
+# o3d.visualization.draw_geometries([pcd])
 
 # load grasp generation model
 # TODO: clean up this yaml file
@@ -178,4 +178,8 @@ pred_grasps_cam, scores, contact_pts, pred_grasp_widths = cgn.predict_scene_gras
 # TODO: any post-processing? putting grasps back in world frame? and point cloud?
 
 # visualize grasps
-visualize_grasps(pc_xyz, pred_grasps_cam, scores, plot_opencv_cam=True, pc_colors=pc_rgb, gripper_openings=None)
+visualize_grasps(pc_xyz, pred_grasps_cam, scores,
+                window_name = 'ContactGraspNet',
+                plot_opencv_cam=True,
+                pc_colors=pc_rgb,
+                gripper_openings=None)
