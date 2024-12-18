@@ -94,6 +94,21 @@ class GraspnessNet:
         # cloud.points = o3d.utility.Vector3dVector(pc.astype(np.float32))
         # o3d.visualization.draw_geometries([cloud, *grippers])
 
+        # from grippers, get grasp poses and gripper widths
+        pred_grasp_array = np.zeros((len(gg),4,4))
+        for i in range(len(gg)):
+            g = gg[i]
+            new_pose = np.eye(4)
+            new_pose[:3,:3] = g.rotation_matrix
+            new_pose[:3,3] = g.translation
+            pred_grasp_array[i,:4,:4] = new_pose
+
+        pred_grasps = {-1: pred_grasp_array}
+        # also return scores
+        grasp_scores = {-1 : gg.scores}
+        gripper_widths = {-1:  gg.widths}
+
+        return pred_grasps, grasp_scores, gripper_widths
 
     def sample_points(self, masked_pc):
         # masked pc is numpy array
