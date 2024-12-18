@@ -179,9 +179,13 @@ cgn_grasp_poses_cam, cgn_scores, cgn_contact_pts, cgn_grasp_widths = cgn.predict
                                                                     local_regions=False,
                                                                     filter_grasps=True,
                                                                     forward_passes=1)
-# TODO: any post-processing? putting grasps back in world frame? and point cloud?
+# put grasps in world frame
+cgn_grasp_poses_world_array = np.zeros_like(cgn_grasp_poses_cam[-1])
+for i,g in enumerate(cgn_grasp_poses_cam[-1]):
+    cgn_grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
+cgn_grasp_poses_world = {-1: cgn_grasp_poses_world_array}
 # visualize grasps
-visualize_grasps(pcd_cam_crop, cgn_grasp_poses_cam, cgn_scores,
+visualize_grasps(pcd_world, cgn_grasp_poses_world, cgn_scores,
                 window_name = 'ContactGraspNet',
                 plot_origin=True,
                 gripper_openings=None)
@@ -198,10 +202,13 @@ edge_grasp = EdgeGraspNet(edge_grasp_config)
 # generate grasp candidates
 edge_grasp_poses_world, edge_grasp_scores, edge_grasp_widths = edge_grasp.predict_scene_grasps(pcd_world_crop)
 # visualize grasps
-visualize_grasps(pcd_world_crop, edge_grasp_poses_world, edge_grasp_scores,
+visualize_grasps(pcd_world, edge_grasp_poses_world, edge_grasp_scores,
                 window_name = 'EdgeGrasp',
                 plot_origin=True,
                 gripper_openings=None)
+
+### VN-EDGE GRASP ###
+# TODO: implement this
 
 
 ### GRASPNESS ###
@@ -236,7 +243,12 @@ print('EVALUATING GIGA')
 
 
 # TODO: plot world point cloud, grasps from each planner in their own color?
-
+print('')
+print('')
+print('PLOTTING ALL PLANNER OUTPUTS')
+vis_grasps_many_planners(pcd_world,
+                        [cgn_grasp_poses_world, edge_grasp_poses_world],
+                        [(1,0,0), (0,1,0)])
 
 
 

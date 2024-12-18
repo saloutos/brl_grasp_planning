@@ -142,8 +142,45 @@ def depth2pc(depth, K, rgb=None):
 
 ### GRASP PLOTTING STUFF ###
 
-def visualize_grasps(pcd_cam, pred_grasps_cam, scores, window_name='Open3D', plot_origin=False, gripper_openings=None, gripper_width=0.08,
-                        T_world_cam=np.eye(4), plot_others=[]):
+def vis_grasps_many_planners(pcd_input, pred_grasps=[], pred_grasp_colors=[], other_frames=[]):
+    """
+    Visualizes point cloud and grasps from many planners.
+    Generalization of visualize_grasps function.
+    """
+    gripper_width=0.08
+
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(window_name="Many Planners")
+    vis.add_geometry(pcd_input)
+
+    # plot the origin
+    plot_coordinates(vis, np.zeros(3,),np.eye(3,3), central_color=(0.5, 0.5, 0.5))
+
+    # plot other frames
+    for f in other_frames:
+        plot_coordinates(vis, f[:3, 3], f[:3,:3])
+
+    # for each set of grasps, plot with corresponding color
+    # only works for non-segmented point cloud right now
+    for i in range(len(pred_grasps)):
+        pred_grasps_indiv = pred_grasps[i]
+        color_indiv = pred_grasp_colors[i]
+        for i,k in enumerate(pred_grasps_indiv):
+            gripper_openings_k = np.ones(len(pred_grasps_indiv[k]))*gripper_width
+
+            draw_grasps(vis,
+                        pred_grasps_indiv[k],
+                        np.eye(4),
+                        colors=[color_indiv]*len(pred_grasps_indiv[k]),
+                        gripper_openings=gripper_openings_k)
+
+    vis.run()
+    vis.destroy_window()
+    return
+
+
+
+def visualize_grasps(pcd_cam, pred_grasps_cam, scores, window_name='Open3D', plot_origin=False, gripper_openings=None, gripper_width=0.08, plot_others=[]):
     """Visualizes colored point cloud and predicted grasps. If given, colors grasps by segmap regions.
     Thick grasp is most confident per segment. For scene point cloud predictions, colors grasps according to confidence.
 
@@ -153,8 +190,7 @@ def visualize_grasps(pcd_cam, pred_grasps_cam, scores, window_name='Open3D', plo
         scores {dict[int:np.ndarray]} -- Confidence scores for grasps
 
     Keyword Arguments:
-        plot_opencv_cam {bool} -- plot camera coordinate frame (default: {False})
-        pc_colors {np.ndarray} -- Nx3 point cloud colors (default: {None})
+        plot_opencv_cam {bool} -- plot origin coordinate frame (default: {False})
         gripper_openings {dict[int:np.ndarray]} -- Predicted grasp widths (default: {None})
         gripper_width {float} -- If gripper_openings is None, plot grasp widths (default: {0.008})
     """
@@ -167,11 +203,6 @@ def visualize_grasps(pcd_cam, pred_grasps_cam, scores, window_name='Open3D', plo
 
     if plot_origin:
         plot_coordinates(vis, np.zeros(3,),np.eye(3,3), central_color=(0.5, 0.5, 0.5))
-        # This is world in cam frame
-        T_cam_world = np.linalg.inv(T_world_cam)  # We plot everything in the camera frame
-        t = T_cam_world[:3,3]
-        r = T_cam_world[:3,:3]
-        plot_coordinates(vis, t, r)
 
     for t in plot_others:
         plot_coordinates(vis, t[:3, 3], t[:3,:3])
