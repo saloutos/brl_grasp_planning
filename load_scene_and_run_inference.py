@@ -210,25 +210,21 @@ print('EVALUATING EDGE GRASP')
 #                 gripper_openings=None)
 
 
-
-
-
-
 ### GRASPNESS ###
 print('')
 print('')
 print('EVALUATING GRASPNESS')
-# load model
-with open('planners/graspness/graspness_config.yaml', 'r') as f:
-    graspness_config = yaml.safe_load(f)
-gsnet = GraspnessNet(graspness_config)
-# generate grasp candidates
-gsnet_grasps_cam, gsnet_scores, gsnet_widths = gsnet.predict_scene_grasps(pcd_cam)
-# visualize grasps
-visualize_grasps(pcd_cam, gsnet_grasps_cam, gsnet_scores,
-                window_name = 'EdgeGrasp',
-                plot_origin=True,
-                gripper_openings=None)
+# # load model
+# with open('planners/graspness/graspness_config.yaml', 'r') as f:
+#     graspness_config = yaml.safe_load(f)
+# gsnet = GraspnessNet(graspness_config)
+# # generate grasp candidates
+# gsnet_grasps_cam, gsnet_scores, gsnet_widths = gsnet.predict_scene_grasps(pcd_cam)
+# # visualize grasps
+# visualize_grasps(pcd_cam, gsnet_grasps_cam, gsnet_scores,
+#                 window_name = 'EdgeGrasp',
+#                 plot_origin=True,
+#                 gripper_openings=None)
 
 
 

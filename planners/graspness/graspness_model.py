@@ -83,16 +83,11 @@ class GraspnessNet:
 
         # TODO: what is this?
         gg = gg.nms()
-
         gg = gg.sort_by_score()
+        # trim list?
+        # TODO: put this limit in config file
         if gg.__len__() > 30:
             gg = gg[:30]
-        grippers = gg.to_open3d_geometry_list()
-
-        # TODO: now what?
-        # cloud = o3d.geometry.PointCloud()
-        # cloud.points = o3d.utility.Vector3dVector(pc.astype(np.float32))
-        # o3d.visualization.draw_geometries([cloud, *grippers])
 
         # from grippers, get grasp poses and gripper widths
         pred_grasp_array = np.zeros((len(gg),4,4))
