@@ -3,7 +3,7 @@ import os.path
 import os
 import sys
 import torch.nn.functional as F
-from torch_geometric.nn import  PPFConv,knn_graph,global_max_pool,radius
+from torch_geometric.nn import  PPFConv, knn_graph, global_max_pool, radius
 from torch_geometric.nn import PointNetConv as PointNetConv
 from torch_geometric.data import Data, DataLoader
 from torch_geometric.transforms import Compose
@@ -25,47 +25,44 @@ class EdgeGraspNet:
 
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-        # TODO: these things should be in config file
-        sample_num = 32
-        position_emd = True
-        lr = 1e-5
-
-        # instantiate model
-        self.position_emd = position_emd
-        self.sample_number = sample_num
-        self.model = EdgeGraspModel(device=self.device, sample_num=sample_num, lr=lr)
+        self.position_emd = self._edge_grasp_cfg['MODEL']['position_emd']
+        self.sample_number = self._edge_grasp_cfg['MODEL']['sample_num']
+        self.model = EdgeGraspModel(device=self.device, sample_num=self.sample_number, lr=self._edge_grasp_cfg['MODEL']['learning_rate'])
 
         # load weights
-        # TODO: these filenames can be in config file
-        n_iter = 180
-        fname1 = 'planners/edge_grasp/checkpoints/local_emd_model-ckpt-%d.pt' % n_iter
-        fname2 = 'planners/edge_grasp/checkpoints/global_emd_model-ckpt-%d.pt' % n_iter
-        fname3 = 'planners/edge_grasp/checkpoints/classifier_model-ckpt-%d.pt' % n_iter
+        checkpoint_dir = self._edge_grasp_cfg['DATA']['checkpoint_dir']
+        n_iter = self._edge_grasp_cfg['DATA']['checkpoint_iter']
+        fname1 = checkpoint_dir + 'local_emd_model-ckpt-%d.pt' % n_iter
+        fname2 = checkpoint_dir + 'global_emd_model-ckpt-%d.pt' % n_iter
+        fname3 = checkpoint_dir + 'classifier_model-ckpt-%d.pt' % n_iter
         self.model.load(fname1,fname2,fname3,)
         print('Loaded params.')
 
-    def predict_scene_grasps(self, pc_full_world):
+    def predict_scene_grasps(self, pc_input):
 
         # pre-process point clouds
-        vertices = np.asarray(pc_full_world.points)
+        vertices = np.asarray(pc_input.points)
         if len(vertices) < 100:
             print("1. point cloud < 100, should skip scene.")
-        # TODO: put filtering parameters into config file?
-        pc_full_world, ind = pc_full_world.remove_statistical_outlier(nb_neighbors=30, std_ratio=1.0)
-        pc_full_world, ind = pc_full_world.remove_radius_outlier(nb_points=30, radius=0.03)
-        pc_full_world.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.04, max_nn=30))
-        pc_full_world.orient_normals_consistent_tangent_plane(30)
-        vertices = np.asarray(pc_full_world.points)
+        # TODO: could put these filtering parameters into config file
+        pc_input, ind = pc_input.remove_statistical_outlier(nb_neighbors=30, std_ratio=1.0)
+        pc_input, ind = pc_input.remove_radius_outlier(nb_points=30, radius=0.03)
+        pc_input.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.04, max_nn=30))
+        pc_input.orient_normals_consistent_tangent_plane(30)
+        # orient normals towards camera to make sure they don't point inside objects
+        pc_input.orient_normals_to_align_with_direction(orientation_reference=np.array([0, -0.4, 0.8]))
+        vertices = np.asarray(pc_input.points)
         if len(vertices) < 100:
             print("2. point cloud < 100, should skip scene.")
-        # TODO: put voxel size into config file?
-        pc_full_world = pc_full_world.voxel_down_sample(voxel_size=0.0045)
 
-        # TODO: is this actually sampling the edge?
+        # downsample based on voxel size
+        pc_input = pc_input.voxel_down_sample(voxel_size=0.0045)
+
+        # o3d.visualization.draw_geometries([pc_input], point_show_normal=True)
+
         # sample edges
-        pos = np.asarray(pc_full_world.points)
-        normals = np.asarray(pc_full_world.normals)
+        pos = np.asarray(pc_input.points)
+        normals = np.asarray(pc_input.normals)
         pos = torch.from_numpy(pos).to(torch.float32).to(self.device)
         normals = torch.from_numpy(normals).to(torch.float32).to(self.device)
 
@@ -93,40 +90,46 @@ class EdgeGraspNet:
 
         # filter edges
         # only record approach vectors with a angle mask
-        x_axis = torch.cross(des_normals, relative_pos_normalized)
+        x_axis = torch.linalg.cross(des_normals, relative_pos_normalized)
         x_axis = F.normalize(x_axis, p=2, dim=1)
-        valid_edge_approach = torch.cross(x_axis, des_normals)
+        valid_edge_approach = torch.linalg.cross(x_axis, des_normals)
         valid_edge_approach = F.normalize(valid_edge_approach, p=2, dim=1)
         valid_edge_approach = -valid_edge_approach
         up_dot_mask = torch.einsum('ik,k->i', valid_edge_approach, torch.tensor([0., 0., 1.]).to(self.device))
         relative_norm = torch.linalg.norm(relative_pos, dim=-1)
 
-        # TODO: put all these filtering parameters into the config file
         depth_proj = -torch.sum(relative_pos * valid_edge_approach, dim=-1)
-        geometry_mask = torch.logical_and(up_dot_mask > -0.1, relative_norm > 0.003)
-        geometry_mask = torch.logical_and(relative_norm<0.038,geometry_mask)
-        depth_proj_mask = torch.logical_and(depth_proj > -0.000, depth_proj < 0.04)
-        geometry_mask = torch.logical_and(geometry_mask, depth_proj_mask)
+        depth_proj_mask =   torch.logical_and(depth_proj > self._edge_grasp_cfg['EVAL']['depth_proj_min'],
+                                                depth_proj < self._edge_grasp_cfg['EVAL']['depth_proj_max'])
+
+        geometry_mask =     torch.logical_and(up_dot_mask > self._edge_grasp_cfg['EVAL']['up_dot_th'],
+                                                relative_norm > self._edge_grasp_cfg['EVAL']['rel_norm_min'])
+        geometry_mask =     torch.logical_and(relative_norm < self._edge_grasp_cfg['EVAL']['rel_norm_max'],
+                                                geometry_mask)
+
+        geometry_mask =     torch.logical_and(geometry_mask, depth_proj_mask)
         if torch.sum(geometry_mask)<10:
             print('Less than 10 valid edges, should skip scene.')
 
         # build grasp poses from candidate edges, check table collisions
         pose_candidates = orthogonal_grasps(geometry_mask, depth_proj, valid_edge_approach, des_normals,
                                             sample_pos)
-        table_grasp_mask = get_gripper_points_mask(pose_candidates, z_threshold=0.054) # TODO: put table-height into the config file
-        geometry_mask[geometry_mask == True] = table_grasp_mask
-        edge_sample_index = all_edge_index[geometry_mask]
-        print('Number of candidates after checking table collisions: ', len(edge_sample_index))
+        if self._edge_grasp_cfg['EVAL']['check_gripper_collisions']:
+            table_grasp_mask = get_gripper_points_mask(pose_candidates, z_threshold=self._edge_grasp_cfg['EVAL']['gripper_z_th'])
+            geometry_mask[geometry_mask == True] = table_grasp_mask
 
-        # TODO: put the maximum number of sample points in the config file
-        MAX_NUM_EDGES = 200
+        # get final edges
+        edge_sample_index = all_edge_index[geometry_mask]
+
+        print('Number of candidates after checking table collisions: ', len(edge_sample_index))
 
         pred_grasps, grasp_scores, gripper_widths = {}, {}, {}
 
         # actually evaluate model for these edges
+        max_num_edges = self._edge_grasp_cfg['EVAL']['max_edges']
         if len(edge_sample_index) > 0:
-            if len(edge_sample_index) > MAX_NUM_EDGES:
-                edge_sample_index = edge_sample_index[torch.randperm(len(edge_sample_index))[:MAX_NUM_EDGES]]
+            if len(edge_sample_index) > max_num_edges:
+                edge_sample_index = edge_sample_index[torch.randperm(len(edge_sample_index))[:max_num_edges]]
             edge_sample_index, _ = torch.sort(edge_sample_index)
             data = Data(pos=pos, normals=normals, sample=sample, radius_p_index=radius_p_index,
                         ball_batch=radius_p_batch,
@@ -138,15 +141,14 @@ class EdgeGraspNet:
             score, depth_projection, approaches, sample_pos, des_normals = self.model.act(data)
 
             # select grasps based on threshold
-            # TODO: put this threshold in config file?
-            SELECTION_THRESHOLD = 0.0
             all_scores = F.sigmoid(score)
-            grasp_mask = (all_scores > SELECTION_THRESHOLD)
+            grasp_mask = (all_scores > self._edge_grasp_cfg['EVAL']['selection_th'])
 
             masked_poses = orthogonal_grasps(grasp_mask, depth_projection, approaches, des_normals, sample_pos)
             masked_scores = all_scores[grasp_mask]
 
             # calculate grasp widths
+            # TODO: what is going on here?
             widths = torch.abs(torch.sum(data.relative_pos * des_normals, dim=-1)) + 0.016
             widths = widths[grasp_mask].clip(max=0.04)
             widths = (widths * 2)
@@ -159,45 +161,10 @@ class EdgeGraspNet:
 
             # TODO: why was original code sampling grasp point here?
 
-            # # pull out parameters of best grasp
-            # k_score, max_index = torch.topk(score, k=1)
-            # selected_edge = edges[edge_sample_index[max_index],:]
-            # max_score = score[max_index]
-            # max_score = F.sigmoid(max_score).cpu().numpy()
-            # print('Best grasp score: ', max_score)
-            # if max_score.any() < 0.85:
-            #     print('No high score, should skip scene.')
-            # grasp_mask = torch.ones(len(depth_projection)) > 2.
-            # grasp_mask[max_index] = True
-            # trans_matrix = orthogonal_grasps(grasp_mask.to(des_normals.device), depth_projection, approaches,
-            #                                 des_normals, sample_pos)
-            # trans_matrix = trans_matrix.cpu().numpy()
-
         else:
             print('No candidates without collisions.')
 
         return pred_grasps, grasp_scores, gripper_widths
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -213,7 +180,7 @@ class EdgeGraspModel:
         self.parameter = list(self.local_emd_model.parameters()) + list(self.global_emd_model.parameters()) + list(self.classifier_fail.parameters())
         self.classifier_para = list(self.global_emd_model.parameters()) + list(self.classifier_fail.parameters())
         self.optim = torch.optim.Adam([{'params': self.local_emd_model.parameters(), 'lr': lr}, {'params': self.classifier_para}, ], lr=lr, weight_decay=1e-8)
-        print('edge_grasper ball: ', sum(p.numel() for p in self.parameter if p.requires_grad))
+        # print('edge_grasper ball: ', sum(p.numel() for p in self.parameter if p.requires_grad))
 
     def forward(self, batch, train=True,):
         # Todo get the local emd for every point in the batch

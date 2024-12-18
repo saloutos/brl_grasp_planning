@@ -547,7 +547,7 @@ class ContactGraspnetModel(nn.Module):
         # We need to pad with zeros and ones to get the final shape so we generate
         # ones and zeros and stack them.
         if use_torch:
-            grasp_R = torch.stack([base_dirs, torch.cross(approach_dirs,base_dirs),approach_dirs], dim=3)  # B x N x 3 x 3
+            grasp_R = torch.stack([base_dirs, torch.linalg.cross(approach_dirs,base_dirs),approach_dirs], dim=3)  # B x N x 3 x 3
             grasp_t = contact_pts + (thickness / 2) * base_dirs - gripper_depth * approach_dirs  # B x N x 3
             grasp_t = grasp_t.unsqueeze(3)  # B x N x 3 x 1
             ones = torch.ones((contact_pts.shape[0], contact_pts.shape[1], 1, 1), dtype=torch.float32).to(self.device)  # B x N x 1 x 1

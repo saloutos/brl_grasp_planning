@@ -7,6 +7,7 @@ import cv2
 import time
 import matplotlib.pyplot as plt
 import open3d as o3d
+import copy
 
 from utils import load_random_grid_ycb, get_base_path, depth2pc
 
@@ -123,6 +124,12 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             if pc[1] is not None:
                 pcd.colors = o3d.utility.Vector3dVector(pc[1] / 255.0)
 
+            # convert PC to world frame and crop
+            workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.225]), np.eye(3), np.array([1.2, 0.8, 0.4]))
+            pcd_world = copy.deepcopy(pcd).transform(cam_extrinsics)
+            pcd_world_crop = pcd_world.crop(workspace_bb)
+            pcd_cam_crop = copy.deepcopy(pcd_world_crop).transform(np.linalg.inv(cam_extrinsics))
+
             # Convert RGB to BGR for OpenCV
             bgr_image = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
 
@@ -149,4 +156,10 @@ cv2.destroyAllWindows()
 glfw.terminate()
 
 # Show point cloud
-o3d.visualization.draw_geometries([pcd])
+# o3d.visualization.draw_geometries([pcd])
+
+# o3d.visualization.draw_geometries([pcd_world])
+
+# o3d.visualization.draw_geometries([pcd_world_crop])
+
+o3d.visualization.draw_geometries([pcd_cam_crop])

@@ -102,11 +102,7 @@ mujoco.mjr_readPixels(rgb_array, depth_array, viewport, gl_context)
 rgb_array = np.flipud(rgb_array)
 depth_array = np.flipud(depth_array)
 depth_array = raw_to_metric_depth(depth_array, near, far)
-
-# TODO: where is the best place to put this?
-Z_RANGE = [0.4, 1.2]
-
-depth_array_clipped = np.clip(depth_array, Z_RANGE[0], Z_RANGE[1])
+depth_array_clipped = np.clip(depth_array, 0.4, 1.2)
 
 # --- Process image --- #
 image = rgb_array
@@ -130,13 +126,6 @@ cam_extrinsics = cam_extrinsics @ T_camzforward_cam
 # get point cloud
 k_d405_640x480 = np.array([[382.418, 0, 320], [0, 382.418, 240], [0, 0, 1]])
 pc_xyz, pc_rgb = depth2pc(depth_array, k_d405_640x480, rgb_array)
-
-# TODO: filter PC based on bounding box in world frame??
-# filter pc based on z-range
-if rgb_array is not None:
-    pc_rgb = pc_rgb[(pc_xyz[:,2] < Z_RANGE[1]) & (pc_xyz[:,2] > Z_RANGE[0])]
-pc_xyz = pc_xyz[(pc_xyz[:,2] < Z_RANGE[1]) & (pc_xyz[:,2] > Z_RANGE[0])]
-
 pcd_cam = o3d.geometry.PointCloud()
 pcd_cam.points = o3d.utility.Vector3dVector(pc_xyz)
 if rgb_array is not None:
@@ -144,7 +133,11 @@ if rgb_array is not None:
 
 # convert PC to world frame
 pcd_world = copy.deepcopy(pcd_cam).transform(cam_extrinsics)
-
+# crop PC based on bounding box in world frame
+workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.225]), np.eye(3), np.array([1.2, 0.8, 0.4]))
+pcd_world_crop = pcd_world.crop(workspace_bb)
+# get cropped point cloud in camera frame as well
+pcd_cam_crop = copy.deepcopy(pcd_world_crop).transform(np.linalg.inv(cam_extrinsics))
 
 # # Convert RGB to BGR for OpenCV
 # bgr_image = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
@@ -162,52 +155,53 @@ pcd_world = copy.deepcopy(pcd_cam).transform(cam_extrinsics)
 # cv2.destroyAllWindows()
 # glfw.terminate()
 
-# # Show point cloud
-# o3d.visualization.draw_geometries([pcd])
+# Show point cloud
+o3d.visualization.draw_geometries([pcd_world])
 
 ### CONTACT GRASPNET ###
 print('')
 print('')
 print('EVALUATING CONTACT GRASPNET')
-# # load grasp generation model
-# # TODO: clean up this yaml file
-# with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
-#     cgn_config = yaml.safe_load(f)
-# cgn_config['OPTIMIZER']['batch_size'] = int(1)
-# cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
-# cgn = ContactGraspNet(cgn_config)
-# # generate grasp candidates
-# # TODO: pass in grasp success threshold? take threshold from config file?
-# print('Generating Grasps...')
-# # TODO: is dict with key -1 best way to return these values??
-# cgn_grasp_poses_cam, cgn_scores, cgn_contact_pts, cgn_grasp_widths = cgn.predict_scene_grasps(pcd_cam,
-#                                                                     pc_segments={},
-#                                                                     local_regions=False,
-#                                                                     filter_grasps=True,
-#                                                                     forward_passes=1)
-# # TODO: any post-processing? putting grasps back in world frame? and point cloud?
-# # visualize grasps
-# visualize_grasps(pcd_cam, cgn_grasp_poses_cam, cgn_scores,
-#                 window_name = 'ContactGraspNet',
-#                 plot_origin=True,
-#                 gripper_openings=None)
+# load grasp generation model
+# TODO: clean up this yaml file
+with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
+    cgn_config = yaml.safe_load(f)
+cgn_config['OPTIMIZER']['batch_size'] = int(1)
+cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
+cgn = ContactGraspNet(cgn_config)
+# generate grasp candidates
+# TODO: pass in grasp success threshold? take threshold from config file?
+print('Generating Grasps...')
+# TODO: is dict with key -1 best way to return these values??
+# TODO: do we ned to keep other function inputs?
+cgn_grasp_poses_cam, cgn_scores, cgn_contact_pts, cgn_grasp_widths = cgn.predict_scene_grasps(pcd_cam_crop,
+                                                                    pc_segments={},
+                                                                    local_regions=False,
+                                                                    filter_grasps=True,
+                                                                    forward_passes=1)
+# TODO: any post-processing? putting grasps back in world frame? and point cloud?
+# visualize grasps
+visualize_grasps(pcd_cam_crop, cgn_grasp_poses_cam, cgn_scores,
+                window_name = 'ContactGraspNet',
+                plot_origin=True,
+                gripper_openings=None)
 
 
 ### EDGE GRASP ###
 print('')
 print('')
 print('EVALUATING EDGE GRASP')
-# # load model
-# with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
-#     edge_grasp_config = yaml.safe_load(f)
-# edge_grasp = EdgeGraspNet(edge_grasp_config)
-# # generate grasp candidates
-# edge_grasp_poses_world, edge_grasp_scores, edge_grasp_widths = edge_grasp.predict_scene_grasps(pcd_world)
-# # visualize grasps
-# visualize_grasps(pcd_world, edge_grasp_poses_world, edge_grasp_scores,
-#                 window_name = 'EdgeGrasp',
-#                 plot_origin=True,
-#                 gripper_openings=None)
+# load model
+with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
+    edge_grasp_config = yaml.safe_load(f)
+edge_grasp = EdgeGraspNet(edge_grasp_config)
+# generate grasp candidates
+edge_grasp_poses_world, edge_grasp_scores, edge_grasp_widths = edge_grasp.predict_scene_grasps(pcd_world_crop)
+# visualize grasps
+visualize_grasps(pcd_world_crop, edge_grasp_poses_world, edge_grasp_scores,
+                window_name = 'EdgeGrasp',
+                plot_origin=True,
+                gripper_openings=None)
 
 
 ### GRASPNESS ###
@@ -219,15 +213,12 @@ print('EVALUATING GRASPNESS')
 #     graspness_config = yaml.safe_load(f)
 # gsnet = GraspnessNet(graspness_config)
 # # generate grasp candidates
-# gsnet_grasps_cam, gsnet_scores, gsnet_widths = gsnet.predict_scene_grasps(pcd_cam)
+# gsnet_grasps_cam, gsnet_scores, gsnet_widths = gsnet.predict_scene_grasps(pcd_cam_crop)
 # # visualize grasps
-# visualize_grasps(pcd_cam, gsnet_grasps_cam, gsnet_scores,
-#                 window_name = 'EdgeGrasp',
+# visualize_grasps(pcd_cam_crop, gsnet_grasps_cam, gsnet_scores,
+#                 window_name = 'Graspness',
 #                 plot_origin=True,
 #                 gripper_openings=None)
-
-
-
 
 
 
@@ -240,10 +231,11 @@ print('EVALUATING GIGA')
 # generate grasp candidates
 
 # visualize grasps
+# TODO: visualize the estimated meshes too?
 
 
 
-
+# TODO: plot world point cloud, grasps from each planner in their own color?
 
 
 

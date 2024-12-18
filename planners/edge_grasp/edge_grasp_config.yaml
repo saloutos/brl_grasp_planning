@@ -1,7 +1,21 @@
 DATA:
-  checkpoint_path: /planners/contact_graspnet/checkpoints/model.pt
+  checkpoint_dir: planners/edge_grasp/checkpoints/
+  checkpoint_iter: 180
 MODEL:
-  asymmetric_model: true
+  position_emd: True
+  sample_num: 32
+  learning_rate: 1.0e-5
+EVAL:
+  up_dot_th: -0.1
+  rel_norm_min: 0.003
+  rel_norm_max: 0.038
+  depth_proj_min: 0.00
+  depth_proj_max: 0.04
+  check_gripper_collisions: True
+  gripper_z_th: 0.054
+  max_edges: 200
+  selection_th: 0.1
+
 
 
 
