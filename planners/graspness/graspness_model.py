@@ -33,7 +33,7 @@ class GraspnessNet:
         checkpoint = torch.load(checkpoint_path, weights_only=False)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         start_epoch = checkpoint['epoch']
-        print("-> loaded checkpoint %s (epoch: %d)" % (checkpoint_path, start_epoch))
+        print("Loaded checkpoint %s (epoch: %d)." % (checkpoint_path, start_epoch))
 
         # ready to evaluate
         self.model.eval()
@@ -75,6 +75,7 @@ class GraspnessNet:
         # collision detection
         collision_thresh = 0 # TODO: put this in config yaml
         voxel_size_cd = 0.01 # TODO: config yaml
+        # TODO: will need to do this in world frame?
         if collision_thresh > 0:
             cloud = data_dict['point_clouds']
             mfcdetector = ModelFreeCollisionDetector(cloud, voxel_size=voxel_size_cd)
@@ -86,16 +87,23 @@ class GraspnessNet:
         gg = gg.sort_by_score()
         # trim list?
         # TODO: put this limit in config file
-        if gg.__len__() > 30:
-            gg = gg[:30]
+        num_grasp_limit = 30
+        if gg.__len__() > num_grasp_limit:
+            print('Trimming final grasp list to %d.' % num_grasp_limit)
+            gg = gg[:num_grasp_limit]
 
         # from grippers, get grasp poses and gripper widths
+        # TODO: need to swap some axes here, since grasp frame is different than our baseline CGN parameterization
         pred_grasp_array = np.zeros((len(gg),4,4))
         for i in range(len(gg)):
             g = gg[i]
             new_pose = np.eye(4)
-            new_pose[:3,:3] = g.rotation_matrix
-            new_pose[:3,3] = g.translation
+            # new_pose[:3,:3] = g.rotation_matrix
+            new_pose[:3,0] = g.rotation_matrix[:3,1]
+            new_pose[:3,1] = g.rotation_matrix[:3,2]
+            new_pose[:3,2] = g.rotation_matrix[:3,0]
+            offset_dist = g.depth + 0.05
+            new_pose[:3,3] = g.translation - offset_dist*g.rotation_matrix[:3,0]
             pred_grasp_array[i,:4,:4] = new_pose
 
         pred_grasps = {-1: pred_grasp_array}
@@ -103,7 +111,7 @@ class GraspnessNet:
         grasp_scores = {-1 : gg.scores}
         gripper_widths = {-1:  gg.widths}
 
-        return pred_grasps, grasp_scores, gripper_widths
+        return pred_grasps, grasp_scores, gripper_widths, gg
 
     def sample_points(self, masked_pc):
         # masked pc is numpy array
@@ -421,38 +429,33 @@ def cylinder_query(radius, hmin, hmax, nsample, xyz, new_xyz, rot):
 
     query_features = torch.zeros(B, npoint, nsample).to(device)
 
-    # for each batch, for each cylinder center, find points within cylinder until nsample are found
-    for i in range(B):
-        for j in range(npoint):
-            new_x = new_xyz[i,j,0]
-            new_y = new_xyz[i,j,1]
-            new_z = new_xyz[i,j,2]
+    # calculate distances from cylinder centers, in cylinder frames
+    dists = new_xyz[:,:,None,:] - xyz[:,None,:,:] # B, npoint, N, 3
+    dists = dists.unsqueeze(4) # B, npoint, N, 3, 1
+    rots = rot.unsqueeze(2).view(B, npoint, 1, 3, 3) # B, npoint, 1, 3, 3
+    rot_dists = torch.matmul(rots, dists).squeeze(4) # B, npoint, N, 3
+    # filters
+    radius_mask = ( (torch.square(rot_dists[:,:,:,1])+torch.square(rot_dists[:,:,:,2])) < r2 ) # B, npoint, N
+    height_mask = torch.logical_and((rot_dists[:,:,:,0]<hmax), (rot_dists[:,:,:,0]>hmin) )# B, npoint, N
+    # get valid points/indices
+    all_valid_pts = torch.logical_and(radius_mask, height_mask) # B, npoint, N
+    all_valid_idxs = torch.argwhere(all_valid_pts)
+    # just take first nsample points from all valid pts
+    # and then fill query features
+    # TODO: this still takes 5 seconds, could try to make it faster
+    cnts = torch.zeros(B, npoint).int().to(device)
+    for k in range(all_valid_idxs.shape[0]):
+        i = all_valid_idxs[k,0]
+        j = all_valid_idxs[k,1]
+        idx = all_valid_idxs[k,2]
+        if cnts[i,j] < nsample:
+            if cnts[i,j]==0: # fill array first time
+                query_features[i,j,:] = idx
+            else:
+                query_features[i,j,cnts[i,j]] = idx
+            cnts[i,j] += 1
 
-            r0 = rot[i,j,0]
-            r1 = rot[i,j,1]
-            r2 = rot[i,j,2]
-            r3 = rot[i,j,3]
-            r4 = rot[i,j,4]
-            r5 = rot[i,j,5]
-            r6 = rot[i,j,6]
-            r7 = rot[i,j,7]
-            r8 = rot[i,j,8]
-
-            cnt = 0
-            for k in range(N):
-                x = xyz[i,k,0] - new_x
-                y = xyz[i,k,1] - new_y
-                z = xyz[i,k,2] - new_z
-                x_rot = r0*x + r3*y + r6*z
-                y_rot = r1*x + r4*y + r7*z
-                z_rot = r2*x + r5*y + r8*z
-                d2 = y_rot**2 + z_rot**2
-                if (d2<r2 and x_rot>hmin and x_rot<hmax):
-                    if cnt < nsample:
-                        query_features[i,j,cnt] = k
-                        cnt += 1
-
-    return query_features
+    return query_features.int()
 
 
 class CylinderQueryAndGroup(nn.Module):

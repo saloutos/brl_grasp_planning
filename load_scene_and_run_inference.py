@@ -215,18 +215,21 @@ visualize_grasps(pcd_world, edge_grasp_poses_world, edge_grasp_scores,
 print('')
 print('')
 print('EVALUATING GRASPNESS')
-# # load model
-# with open('planners/graspness/graspness_config.yaml', 'r') as f:
-#     graspness_config = yaml.safe_load(f)
-# gsnet = GraspnessNet(graspness_config)
-# # generate grasp candidates
-# gsnet_grasps_cam, gsnet_scores, gsnet_widths = gsnet.predict_scene_grasps(pcd_cam_crop)
-# # visualize grasps
-# visualize_grasps(pcd_cam_crop, gsnet_grasps_cam, gsnet_scores,
-#                 window_name = 'Graspness',
-#                 plot_origin=True,
-#                 gripper_openings=None)
+# load model
+with open('planners/graspness/graspness_config.yaml', 'r') as f:
+    graspness_config = yaml.safe_load(f)
+gsnet = GraspnessNet(graspness_config)
+# generate grasp candidates
+gsnet_grasps_world, gsnet_scores, gsnet_widths, gsnet_gg = gsnet.predict_scene_grasps(pcd_world_crop)
+# old vis for debugging
+grippers = gsnet_gg.to_open3d_geometry_list()
+o3d.visualization.draw_geometries([pcd_world_crop, *grippers])
 
+# visualize grasps
+visualize_grasps(pcd_world_crop, gsnet_grasps_world, gsnet_scores,
+                window_name = 'Graspness',
+                plot_origin=True,
+                gripper_openings=None)
 
 
 ### GIGA ###
@@ -242,7 +245,8 @@ print('EVALUATING GIGA')
 
 
 
-# TODO: plot world point cloud, grasps from each planner in their own color?
+### ALL PLANNER OUTPUTS ###
+# plot world point cloud and grasps from each planner in their own color
 print('')
 print('')
 print('PLOTTING ALL PLANNER OUTPUTS')
