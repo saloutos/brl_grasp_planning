@@ -185,7 +185,7 @@ for i,g in enumerate(cgn_grasp_poses_cam[-1]):
     cgn_grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
 cgn_grasp_poses_world = {-1: cgn_grasp_poses_world_array}
 # visualize grasps
-visualize_grasps(pcd_world, cgn_grasp_poses_world, cgn_scores,
+visualize_grasps(pcd_world_crop, cgn_grasp_poses_world, cgn_scores,
                 window_name = 'ContactGraspNet',
                 plot_origin=True,
                 gripper_openings=None)
@@ -202,7 +202,7 @@ edge_grasp = EdgeGraspNet(edge_grasp_config)
 # generate grasp candidates
 edge_grasp_poses_world, edge_grasp_scores, edge_grasp_widths = edge_grasp.predict_scene_grasps(pcd_world_crop)
 # visualize grasps
-visualize_grasps(pcd_world, edge_grasp_poses_world, edge_grasp_scores,
+visualize_grasps(pcd_world_crop, edge_grasp_poses_world, edge_grasp_scores,
                 window_name = 'EdgeGrasp',
                 plot_origin=True,
                 gripper_openings=None)
@@ -220,9 +220,14 @@ with open('planners/graspness/graspness_config.yaml', 'r') as f:
     graspness_config = yaml.safe_load(f)
 gsnet = GraspnessNet(graspness_config)
 # generate grasp candidates
-gsnet_grasps_world, gsnet_scores, gsnet_widths = gsnet.predict_scene_grasps(pcd_world_crop)
+gsnet_grasp_poses_cam, gsnet_scores, gsnet_widths = gsnet.predict_scene_grasps(pcd_cam_crop)
+# put grasps in world frame
+gsnet_grasp_poses_world_array = np.zeros_like(gsnet_grasp_poses_cam[-1])
+for i,g in enumerate(gsnet_grasp_poses_cam[-1]):
+    gsnet_grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
+gsnet_grasp_poses_world = {-1: gsnet_grasp_poses_world_array}
 # visualize grasps
-visualize_grasps(pcd_world_crop, gsnet_grasps_world, gsnet_scores,
+visualize_grasps(pcd_world_crop, gsnet_grasp_poses_world, gsnet_scores,
                 window_name = 'Graspness',
                 plot_origin=True,
                 gripper_openings=None)
@@ -246,7 +251,7 @@ print('')
 print('')
 print('PLOTTING ALL PLANNER OUTPUTS')
 vis_grasps_many_planners(pcd_world,
-                        [cgn_grasp_poses_world, edge_grasp_poses_world, gsnet_grasps_world],
+                        [cgn_grasp_poses_world, edge_grasp_poses_world, gsnet_grasp_poses_world],
                         [(1,0,0), (0,1,0), (0,0,1)])
 
 
