@@ -18,14 +18,109 @@ from .graspness_utils import *
 
 ### CLASS TO EVALUATE EDGE GRASP, PERFORM PRE AND POST PROCESSING OF DATA ###
 
+class GraspnessNet:
+    def __init__(self, cfg):
+        self._graspnet_cfg = cfg
+
+        # instantiate model
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        self.model = GraspNetModel(seed_feat_dim=512, is_training=False)
+        self.model.to(self.device)
+
+        # load weights
+        checkpoint_path = 'planners/graspness/checkpoints/minkuresunet_realsense.tar' # TODO: put this in config yaml
+        checkpoint = torch.load(checkpoint_path)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        start_epoch = checkpoint['epoch']
+        print("-> loaded checkpoint %s (epoch: %d)" % (checkpoint_path, start_epoch))
+
+        # ready to evaluate
+        self.model.eval()
+
+    def predict_scene_grasps(self, pcd_cam):
+
+        # some pre-processing
+        pc = np.asarray(pcd_cam.points)
+        data_dict = self.sample_points(pc)
+
+        # batch and process the data
+        batch_data = minkowski_collate_fn([data_dict])
+        for key in batch_data:
+            if 'list' in key:
+                for i in range(len(batch_data[key])):
+                    for j in range(len(batch_data[key][i])):
+                        batch_data[key][i][j] = batch_data[key][i][j].to(self.device)
+            else:
+                batch_data[key] = batch_data[key].to(self.device)
+        # Forward pass
+        with torch.no_grad():
+            end_points = self.model(batch_data)
+            grasp_preds = pred_decode(end_points)
+        # return the predictions
+        preds = grasp_preds[0].detach().cpu().numpy()
+
+        # Filtering grasp poses for real-world execution.
+        # The first mask preserves the grasp poses that are within a 30-degree angle with the vertical pose and have a width of less than 9cm.
+        # mask = (preds[:,10] > 0.9) & (preds[:,1] < 0.09)
+        # The second mask preserves the grasp poses within the workspace of the robot.
+        # workspace_mask = (preds[:,13] > -0.20) & (preds[:,13] < 0.21) & (preds[:,14] > -0.06) & (preds[:,14] < 0.18) & (preds[:,15] > 0.63) 
+        # preds = preds[mask & workspace_mask]
+
+        # if len(preds) == 0:
+        #         print('No grasp detected after masking')
+        #         return
+
+        gg = GraspGroup(preds)
+        # collision detection
+        collision_thresh = 0 # TODO: put this in config yaml
+        voxel_size_cd = 0.01 # TODO: config yaml
+        if collision_thresh > 0:
+            cloud = data_dict['point_clouds']
+            mfcdetector = ModelFreeCollisionDetector(cloud, voxel_size=voxel_size_cd)
+            collision_mask = mfcdetector.detect(gg, approach_dist=0.05, collision_thresh=collision_thresh)
+            gg = gg[~collision_mask]
+
+        # TODO: what is this?
+        gg = gg.nms()
+
+        gg = gg.sort_by_score()
+        if gg.__len__() > 30:
+            gg = gg[:30]
+        grippers = gg.to_open3d_geometry_list()
+
+        # TODO: now what?
+        # cloud = o3d.geometry.PointCloud()
+        # cloud.points = o3d.utility.Vector3dVector(pc.astype(np.float32))
+        # o3d.visualization.draw_geometries([cloud, *grippers])
 
 
+    def sample_points(self, masked_pc):
+        # masked pc is numpy array
+        # sample masked_pc random
+
+        num_points = 15000 # TODO: put this in config yaml file
+        voxel_size = 0.005 # TODO: this should also be in config yaml file
+
+        if len(masked_pc) >= num_points:
+            idxs = np.random.choice(len(masked_pc), num_points, replace=False)
+        else:
+            idxs1 = np.arange(len(masked_pc))
+            idxs2 = np.random.choice(len(masked_pc), num_points - len(masked_pc), replace=True)
+            idxs = np.concatenate([idxs1, idxs2], axis=0)
+        cloud_sampled = masked_pc[idxs]
+
+        ret_dict = {'point_clouds': cloud_sampled.astype(np.float32),
+                    'coors': cloud_sampled.astype(np.float32) / voxel_size,
+                    'feats': np.ones_like(cloud_sampled).astype(np.float32),
+                    }
+        return ret_dict
 
 
 
 ### GRASPNESS MODEL ITSELF ###
 
-class GraspNet(nn.Module):
+class GraspNetModel(nn.Module):
     def __init__(self, cylinder_radius=0.05, seed_feat_dim=512, is_training=False):
         super().__init__()
         self.is_training = is_training

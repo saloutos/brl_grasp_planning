@@ -13,7 +13,8 @@ import yaml
 import copy
 
 from planners.contact_graspnet.cgn_model import ContactGraspNet
-from planners.edge_grasp.edge_grasp_model import EdgeGrasp
+from planners.edge_grasp.edge_grasp_model import EdgeGraspNet
+from planners.graspness.graspness_model import GraspnessNet
 from utils import *
 
 # TODO: load some global config stuff here? scene, table boundaries, etc
@@ -199,7 +200,7 @@ print('EVALUATING EDGE GRASP')
 # load model
 with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
     edge_grasp_config = yaml.safe_load(f)
-edge_grasp = EdgeGrasp(edge_grasp_config)
+edge_grasp = EdgeGraspNet(edge_grasp_config)
 # generate grasp candidates
 edge_grasp_poses_world, edge_grasp_scores, edge_grasp_widths = edge_grasp.predict_scene_grasps(pcd_world)
 # visualize grasps
@@ -218,9 +219,11 @@ print('')
 print('')
 print('EVALUATING GRASPNESS')
 # load model
-
+with open('planners/graspness/graspness_config.yaml', 'r') as f:
+    graspness_config = yaml.safe_load(f)
+gsnet = GraspnessNet(graspness_config)
 # generate grasp candidates
-
+gsnet.predict_scene_grasps(pcd_cam)
 # visualize grasps
 
 

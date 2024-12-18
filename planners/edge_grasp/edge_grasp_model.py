@@ -19,7 +19,7 @@ from .edge_grasp_utils import *
 ### CLASS TO EVALUATE EDGE GRASP, PERFORM PRE AND POST PROCESSING OF DATA ###
 
 # NOTE: structure of original edge grasper seemed really nice for training, testing, saving, loading, etc!
-class EdgeGrasp:
+class EdgeGraspNet:
     def __init__(self, cfg) :
         self._edge_grasp_cfg = cfg
 
