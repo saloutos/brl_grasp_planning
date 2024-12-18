@@ -30,7 +30,7 @@ class GraspnessNet:
 
         # load weights
         checkpoint_path = 'planners/graspness/checkpoints/minkuresunet_realsense.tar' # TODO: put this in config yaml
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, weights_only=False)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         start_epoch = checkpoint['epoch']
         print("-> loaded checkpoint %s (epoch: %d)" % (checkpoint_path, start_epoch))
@@ -353,17 +353,10 @@ def gather_operation(features, idx):
         (B, C, npoint) tensor
     """
     # type: (Any, torch.Tensor, torch.Tensor) -> torch.Tensor
-    # device = features.device
-    # B, C, N = features.shape
-    # _, npoint = idx.shape
-
-    # gathered_feats = torch.zeros(B, C, npoint).to(device)
-    # for i in range(B):
-    #     for j in range(npoint):
-    #         gathered_feats[i,:,j] = features[i,:,idx[i,j]]
-    # return gathered_feats
-
-    return features.gather(2, idx)
+    device = features.device
+    B, C, N = features.shape
+    all_idx = idx.unsqueeze(1).repeat(1, C, 1).long()
+    return features.gather(2, all_idx)
 
 
 def grouping_operation(features, idx):
@@ -381,7 +374,7 @@ def grouping_operation(features, idx):
         (B, C, npoint, nsample) tensor
     """
     all_idx = idx.reshape(idx.shape[0], -1)
-    all_idx = all_idx.unsqueeze(1).repeat(1, features.shape[1], 1)
+    all_idx = all_idx.unsqueeze(1).repeat(1, features.shape[1], 1).long()
     grouped_features = features.gather(2, all_idx)
     return grouped_features.reshape(idx.shape[0], features.shape[1], idx.shape[1], idx.shape[2])
 
