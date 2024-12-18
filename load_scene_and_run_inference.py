@@ -220,17 +220,12 @@ with open('planners/graspness/graspness_config.yaml', 'r') as f:
     graspness_config = yaml.safe_load(f)
 gsnet = GraspnessNet(graspness_config)
 # generate grasp candidates
-gsnet_grasps_world, gsnet_scores, gsnet_widths, gsnet_gg = gsnet.predict_scene_grasps(pcd_world_crop)
-# old vis for debugging
-grippers = gsnet_gg.to_open3d_geometry_list()
-o3d.visualization.draw_geometries([pcd_world_crop, *grippers])
-
+gsnet_grasps_world, gsnet_scores, gsnet_widths = gsnet.predict_scene_grasps(pcd_world_crop)
 # visualize grasps
 visualize_grasps(pcd_world_crop, gsnet_grasps_world, gsnet_scores,
                 window_name = 'Graspness',
                 plot_origin=True,
                 gripper_openings=None)
-
 
 ### GIGA ###
 print('')
@@ -251,8 +246,8 @@ print('')
 print('')
 print('PLOTTING ALL PLANNER OUTPUTS')
 vis_grasps_many_planners(pcd_world,
-                        [cgn_grasp_poses_world, edge_grasp_poses_world],
-                        [(1,0,0), (0,1,0)])
+                        [cgn_grasp_poses_world, edge_grasp_poses_world, gsnet_grasps_world],
+                        [(1,0,0), (0,1,0), (0,0,1)])
 
 
 

@@ -87,7 +87,7 @@ class GraspnessNet:
         gg = gg.sort_by_score()
         # trim list?
         # TODO: put this limit in config file
-        num_grasp_limit = 30
+        num_grasp_limit = 100
         if gg.__len__() > num_grasp_limit:
             print('Trimming final grasp list to %d.' % num_grasp_limit)
             gg = gg[:num_grasp_limit]
@@ -111,7 +111,7 @@ class GraspnessNet:
         grasp_scores = {-1 : gg.scores}
         gripper_widths = {-1:  gg.widths}
 
-        return pred_grasps, grasp_scores, gripper_widths, gg
+        return pred_grasps, grasp_scores, gripper_widths
 
     def sample_points(self, masked_pc):
         # masked pc is numpy array
