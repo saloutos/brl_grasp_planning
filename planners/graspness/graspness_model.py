@@ -427,8 +427,6 @@ def cylinder_query(radius, hmin, hmax, nsample, xyz, new_xyz, rot):
     _, npoint, _ = new_xyz.shape
     r2 = radius**2
 
-    query_features = torch.zeros(B, npoint, nsample).to(device)
-
     # calculate distances from cylinder centers, in cylinder frames
     dists = new_xyz[:,:,None,:] - xyz[:,None,:,:] # B, npoint, N, 3
     dists = dists.unsqueeze(4) # B, npoint, N, 3, 1
@@ -439,23 +437,21 @@ def cylinder_query(radius, hmin, hmax, nsample, xyz, new_xyz, rot):
     height_mask = torch.logical_and((rot_dists[:,:,:,0]<hmax), (rot_dists[:,:,:,0]>hmin) )# B, npoint, N
     # get valid points/indices
     all_valid_pts = torch.logical_and(radius_mask, height_mask) # B, npoint, N
-    all_valid_idxs = torch.argwhere(all_valid_pts)
+    all_valid_idxs = torch.nonzero(all_valid_pts, as_tuple=False).int() # num_valid, 3
+    all_valid_sample_point_idxs = all_valid_idxs[:,1]
     # just take first nsample points from all valid pts
-    # and then fill query features
-    # TODO: this still takes 5 seconds, could try to make it faster
-    cnts = torch.zeros(B, npoint).int().to(device)
-    for k in range(all_valid_idxs.shape[0]):
-        i = all_valid_idxs[k,0]
-        j = all_valid_idxs[k,1]
-        idx = all_valid_idxs[k,2]
-        if cnts[i,j] < nsample:
-            if cnts[i,j]==0: # fill array first time
-                query_features[i,j,:] = idx
-            else:
-                query_features[i,j,cnts[i,j]] = idx
-            cnts[i,j] += 1
+    unique_values, inverse_indices, counts = torch.unique_consecutive(all_valid_sample_point_idxs, return_inverse=True, return_counts=True)
+    query_features = torch.zeros((B, npoint, nsample), dtype=torch.int).to(device)
 
-    return query_features.int()
+    for i, count in enumerate(counts):
+        start_idx = (inverse_indices == i).nonzero()[0]
+        cnt = min(count, nsample)
+        end_idx = start_idx + cnt
+        query_features[all_valid_idxs[start_idx:end_idx,0],
+                        all_valid_idxs[start_idx:end_idx,1],
+                        torch.arange(cnt)] = all_valid_idxs[start_idx:end_idx,2]
+
+    return query_features
 
 
 class CylinderQueryAndGroup(nn.Module):
