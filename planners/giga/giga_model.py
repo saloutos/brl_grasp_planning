@@ -6,7 +6,10 @@ from torch import distributions as dist
 from torch_scatter import scatter_mean
 from torch.nn import init
 import time
-import cv2
+from scipy import ndimage
+import open3d as o3d
+from math import cos, sin
+
 
 from .giga_utils import *
 
@@ -22,7 +25,7 @@ class GIGANet:
         # some params from giga init
         # TODO: put these in config file
         self.best=False
-        self.force_detection=False
+        self.always_detect=True
         self.qual_th=0.9
         self.out_th=0.5
         self.resolution=40
@@ -51,8 +54,8 @@ class GIGANet:
     # run model for an entire scene
     def predict_scene_grasps(self, depth_image, camera_intrinsics, camera_pose):
 
-        # create scene TSDF from pcd
-        # TODO: is this ineffecient?
+        # create scene TSDF
+        # TODO: time this, is it ineffecient?
         voxel_size = self.size / self.resolution
         sdf_trunc = 4 * voxel_size
 
@@ -62,7 +65,6 @@ class GIGANet:
             sdf_trunc=sdf_trunc,
             color_type=o3d.pipelines.integration.TSDFVolumeColorType.NoColor,
         )
-
         rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
             o3d.geometry.Image(np.empty_like(depth_image)),
             o3d.geometry.Image(depth_image),
@@ -70,7 +72,6 @@ class GIGANet:
             depth_trunc=2.0,
             convert_rgb_to_intensity=False,
         )
-
         intrinsic = o3d.camera.PinholeCameraIntrinsic(
             width=camera_intrinsics.width,
             height=camera_intrinsics.height,
@@ -79,13 +80,8 @@ class GIGANet:
             cx=camera_intrinsics.cx,
             cy=camera_intrinsics.cy,
         )
-
         tsdf.integrate(rgbd, intrinsic, np.linalg.inv(camera_pose))
-
-        # tsdf = TSDFVolume(self.size, self.resolution)
-        # tsdf.integrate(depth_image, camera_intrinsics, np.linalg.inv(camera_pose))
-
-        # TODO: is this too slow?
+        # TODO: is this part too slow?
         shape = (1, self.resolution, self.resolution, self.resolution)
         tsdf_vol = np.zeros(shape, dtype=np.float32)
         voxels = tsdf.extract_voxel_grid().get_voxels()
@@ -101,56 +97,116 @@ class GIGANet:
         # mesh.compute_vertex_normals()
         # o3d.visualization.draw_geometries([mesh])
 
-        # TODO: pull these functions in from utils?
         # run model
-        qual_vol, rot_vol, width_vol = predict(tsdf_vol, self.pos, self.model, self.device)
+        with torch.no_grad():
+            qual_vol, rot_vol, width_vol = self.model( torch.from_numpy(tsdf_vol).to(self.device), self.pos)
+        # move outputs back to cpu, then reshape
+        qual_vol = qual_vol.cpu().squeeze().numpy()
+        rot_vol = rot_vol.cpu().squeeze().numpy()
+        width_vol = width_vol.cpu().squeeze().numpy()
         qual_vol = qual_vol.reshape((self.resolution, self.resolution, self.resolution))
         rot_vol = rot_vol.reshape((self.resolution, self.resolution, self.resolution, 4))
         width_vol = width_vol.reshape((self.resolution, self.resolution, self.resolution))
 
-        print('Raw predictions:')
-        print(qual_vol)
-        # print(rot_vol)
-        # print(width_vol)
-
         # process outputs
-        qual_vol, rot_vol, width_vol = process(tsdf_vol, qual_vol, rot_vol, width_vol, out_th=self.out_th)
+        gaussian_filter_sigma=1.0 # TODO: put these in config file
+        min_width=0.033
+        max_width=0.233
+        out_th=0.5
+        tsdf_vol = tsdf_vol.squeeze()
+        # smooth quality volume with a Gaussian
+        qual_vol = ndimage.gaussian_filter(
+            qual_vol, sigma=gaussian_filter_sigma, mode="nearest"
+        )
+        # mask out voxels too far away from the surface
+        outside_voxels = tsdf_vol > out_th
+        inside_voxels = np.logical_and(1e-3 < tsdf_vol, tsdf_vol < out_th)
+        valid_voxels = ndimage.morphology.binary_dilation(
+            outside_voxels, iterations=2, mask=np.logical_not(inside_voxels)
+        )
+        qual_vol[valid_voxels == False] = 0.0
+        # reject voxels with predicted widths that are too small or too large
+        qual_vol[np.logical_or(width_vol < min_width, width_vol > max_width)] = 0.0
 
-        print('Processed predictions:')
-        print(qual_vol)
-
-        qual_vol = bound(qual_vol, voxel_size)
+        # avoid grasp out of bounds [0.02  0.02  0.055]
+        limit=[0.02, 0.02, 0.055] # TODO: put this in config file
+        x_lim = int(limit[0] / voxel_size)
+        y_lim = int(limit[1] / voxel_size)
+        z_lim = int(limit[2] / voxel_size)
+        # TODO: uncomment this once limits are corrected
+        # qual_vol[:x_lim] = 0.0
+        # qual_vol[-x_lim:] = 0.0
+        # qual_vol[:, :y_lim] = 0.0
+        # qual_vol[:, -y_lim:] = 0.0
+        # qual_vol[:, :, :z_lim] = 0.0
 
         # select grasps to return
-        grasps, scores = select(qual_vol.copy(), self.pos.view(self.resolution, self.resolution, self.resolution, 3).cpu(), rot_vol, width_vol, \
-                                threshold=self.qual_th, force_detection=self.force_detection, max_filter_size=4)
-        grasps, scores = np.asarray(grasps), np.asarray(scores)
+        LOW_TH = 0.5 # TODO: put this in config file?
+        max_filter_size=4
+        center_vol = self.pos.view(self.resolution, self.resolution, self.resolution, 3).cpu()
+        best_only = False
+        qual_vol[qual_vol < LOW_TH] = 0.0
+        if self.always_detect and (qual_vol >= self.qual_th).sum() == 0:
+            # worst case, still return the best grasp (even if it has a low score)
+            best_only = True
+        else:
+            # threshold on grasp quality
+            qual_vol[qual_vol < self.qual_th] = 0.0
+        # non maximum suppression
+        max_vol = ndimage.maximum_filter(qual_vol, size=max_filter_size)
+        qual_vol = np.where(qual_vol == max_vol, qual_vol, 0.0)
+        mask = np.where(qual_vol, 1.0, 0.0)
 
-        new_grasps = []
+        # construct grasps
+        grasps, scores, widths = [], [], []
+        for index in np.argwhere(mask):
+            i, j, k = index
+            score = qual_vol[i, j, k]
+            ori = Rotation.from_quat(rot_vol[i, j, k])
+            center = center_vol[i, j, k].numpy()
+            width = width_vol[i, j, k]
+            # TODO: just save grasp pose, widths
+            grasp = Transform(ori, center)
+            grasps.append(grasp)
+            scores.append(score)
+            widths.append(width)
+
+        # sort grasps by score
+        sorted_grasps = [grasps[i] for i in reversed(np.argsort(scores))]
+        sorted_scores = [scores[i] for i in reversed(np.argsort(scores))]
+        sorted_widths = [widths[i] for i in reversed(np.argsort(scores))]
+        if best_only and len(sorted_grasps) > 0:
+            sorted_grasps = [sorted_grasps[0]]
+            sorted_scores = [sorted_scores[0]]
+            sorted_widths = [sorted_widths[0]]
+
+        grasps, scores, widths = np.asarray(sorted_grasps), np.asarray(sorted_scores), np.asarray(sorted_widths)
         grasp_poses = []
         grasp_widths = []
+        grasp_scores = []
         if len(grasps) > 0:
+            # choose which grasps to return
             if self.best:
                 p = np.arange(len(grasps))
             else:
                 p = np.random.permutation(len(grasps))
+            # TODO: what is happening here? some scaling?
             for g in grasps[p]:
-                # TODO: what is happening here?
-                pose = g.pose
-                pose.translation = (pose.translation + 0.5) * self.size
-                width = g.width * self.size
+                g.translation = (g.translation + 0.5) * self.size
+                grasp_poses.append(g.as_matrix())
+            for w in widths[p]:
+                width = w * self.size
+                grasp_widths.append(w)
+            grasp_scores = list(scores[p])
 
-                new_grasps.append(Grasp(pose, width))
-                grasp_poses.append(pose)
-                grasp_widths.append(width)
-            scores = scores[p]
-        grasps = new_grasps
-        grasp_scores = list(scores)
-
+        # convert to dict format used by other models
+        grasp_poses_array = np.zeros((len(grasp_scores),4,4))
+        for i in range(len(grasp_scores)):
+            grasp_poses_array[i,:4,:4] = grasp_poses[i]
+        grasp_poses = {-1: grasp_poses_array}
+        grasp_scores = {-1: grasp_scores}
+        grasp_widths = {-1: grasp_widths}
         # return grasps, scores, widths
-        # grasp_poses = []
-        # grasp_scores = []
-        # grasp_widths = []
         return grasp_poses, grasp_scores, grasp_widths
 
 

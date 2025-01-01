@@ -4,10 +4,6 @@ import torch.nn.functional as F
 import enum
 import numpy as np
 import scipy.spatial.transform
-from scipy import ndimage
-import open3d as o3d
-import time
-from math import cos, sin
 
 
 
@@ -19,15 +15,6 @@ LOW_TH = 0.5
 
 # TODO: clean up this file, can probably remove a lot of stuff
 
-class Grasp(object):
-    """Grasp parameterized as pose of a 2-finger robot hand.
-
-    TODO(mbreyer): clarify definition of grasp frame
-    """
-
-    def __init__(self, pose, width):
-        self.pose = pose
-        self.width = width
 
 class Rotation(scipy.spatial.transform.Rotation):
     @classmethod
@@ -200,107 +187,3 @@ def normalize_3d_coordinate(p, padding=0.1):
     if p_nor.min() < 0:
         p_nor[p_nor < 0] = 0.0
     return p_nor
-
-
-
-
-
-def bound(qual_vol, voxel_size, limit=[0.02, 0.02, 0.055]):
-    # avoid grasp out of bound [0.02  0.02  0.055]
-    x_lim = int(limit[0] / voxel_size)
-    y_lim = int(limit[1] / voxel_size)
-    z_lim = int(limit[2] / voxel_size)
-    qual_vol[:x_lim] = 0.0
-    qual_vol[-x_lim:] = 0.0
-    qual_vol[:, :y_lim] = 0.0
-    qual_vol[:, -y_lim:] = 0.0
-    qual_vol[:, :, :z_lim] = 0.0
-    return qual_vol
-
-def predict(tsdf_vol, pos, net, device):
-    assert tsdf_vol.shape == (1, 40, 40, 40)
-
-    # move input to the GPU
-    tsdf_vol = torch.from_numpy(tsdf_vol).to(device)
-
-    # forward pass
-    with torch.no_grad():
-        qual_vol, rot_vol, width_vol = net(tsdf_vol, pos)
-
-    # move output back to the CPU
-    qual_vol = qual_vol.cpu().squeeze().numpy()
-    rot_vol = rot_vol.cpu().squeeze().numpy()
-    width_vol = width_vol.cpu().squeeze().numpy()
-    return qual_vol, rot_vol, width_vol
-
-def process(
-    tsdf_vol,
-    qual_vol,
-    rot_vol,
-    width_vol,
-    gaussian_filter_sigma=1.0,
-    min_width=0.033,
-    max_width=0.233,
-    out_th=0.5
-):
-    tsdf_vol = tsdf_vol.squeeze()
-
-    # smooth quality volume with a Gaussian
-    qual_vol = ndimage.gaussian_filter(
-        qual_vol, sigma=gaussian_filter_sigma, mode="nearest"
-    )
-
-    # mask out voxels too far away from the surface
-    outside_voxels = tsdf_vol > out_th
-    inside_voxels = np.logical_and(1e-3 < tsdf_vol, tsdf_vol < out_th)
-    valid_voxels = ndimage.morphology.binary_dilation(
-        outside_voxels, iterations=2, mask=np.logical_not(inside_voxels)
-    )
-    qual_vol[valid_voxels == False] = 0.0
-
-    # reject voxels with predicted widths that are too small or too large
-    qual_vol[np.logical_or(width_vol < min_width, width_vol > max_width)] = 0.0
-
-    return qual_vol, rot_vol, width_vol
-
-
-def select(qual_vol, center_vol, rot_vol, width_vol, threshold=0.90, max_filter_size=4, force_detection=False):
-    best_only = False
-    qual_vol[qual_vol < LOW_TH] = 0.0
-    if force_detection and (qual_vol >= threshold).sum() == 0:
-        best_only = True
-    else:
-        # threshold on grasp quality
-        qual_vol[qual_vol < threshold] = 0.0
-
-    # non maximum suppression
-    max_vol = ndimage.maximum_filter(qual_vol, size=max_filter_size)
-    qual_vol = np.where(qual_vol == max_vol, qual_vol, 0.0)
-    mask = np.where(qual_vol, 1.0, 0.0)
-
-    # construct grasps
-    grasps, scores = [], []
-    for index in np.argwhere(mask):
-        grasp, score = select_index(qual_vol, center_vol, rot_vol, width_vol, index)
-        grasps.append(grasp)
-        scores.append(score)
-
-    sorted_grasps = [grasps[i] for i in reversed(np.argsort(scores))]
-    sorted_scores = [scores[i] for i in reversed(np.argsort(scores))]
-
-    if best_only and len(sorted_grasps) > 0:
-        sorted_grasps = [sorted_grasps[0]]
-        sorted_scores = [sorted_scores[0]]
-
-    return sorted_grasps, sorted_scores
-
-
-
-def select_index(qual_vol, center_vol, rot_vol, width_vol, index):
-    i, j, k = index
-    score = qual_vol[i, j, k]
-    ori = Rotation.from_quat(rot_vol[i, j, k])
-    #pos = np.array([i, j, k], dtype=np.float64)
-    pos = center_vol[i, j, k].numpy()
-    width = width_vol[i, j, k]
-    return Grasp(Transform(ori, pos), width), score

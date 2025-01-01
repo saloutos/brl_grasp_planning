@@ -261,17 +261,11 @@ giganet = GIGANet(giga_config)
 giga_tic = time.time()
 giga_grasp_poses, giga_grasp_scores, giga_grasp_widths = giganet.predict_scene_grasps(depth_array, k_d405_640x480, cam_extrinsics)
 giga_toc = time.time() - giga_tic
-
-print(giga_grasp_poses)
-print(giga_grasp_scores)
-print(giga_grasp_widths)
-
-
 # visualize grasps
-# visualize_grasps(pcd_world_crop, giga_grasp_poses, giga_grasp_scores,
-#                 window_name = 'GIGA',
-#                 plot_origin=True,
-#                 gripper_openings=None)
+visualize_grasps(pcd_world_crop, giga_grasp_poses, giga_grasp_scores,
+                window_name = 'GIGA',
+                plot_origin=True,
+                gripper_openings=None)
 # TODO: visualize the estimated meshes too?
 
 
