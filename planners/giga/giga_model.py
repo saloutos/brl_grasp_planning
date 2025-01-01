@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from torch import distributions as dist
 from torch_scatter import scatter_mean
 from torch.nn import init
+import time
+import cv2
 
 from .giga_utils import *
 
@@ -24,6 +26,7 @@ class GIGANet:
         self.qual_th=0.9
         self.out_th=0.5
         self.resolution=40
+        self.size = 0.3
 
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -33,10 +36,10 @@ class GIGANet:
         # TODO: put some of this in config?
         checkpoint_path = 'planners/giga/checkpoints/giga_packed.pt'
         checkpoint = torch.load(checkpoint_path, weights_only=False)
-        self.model.load_state_dict(checkpoint) # TODO: add key ['model_state_dict']?
+        self.model.load_state_dict(checkpoint)
         print('Done loading model params.')
 
-        # set up some final variables
+        # set up positions to use for grasp centers during prediction
         x, y, z = torch.meshgrid(torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), \
                                 torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), \
                                 torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), \
@@ -46,19 +49,109 @@ class GIGANet:
         self.pos = pos.view(1, self.resolution * self.resolution * self.resolution, 3)
 
     # run model for an entire scene
-    def predict_scene_grasps(self, some_pcd):
+    def predict_scene_grasps(self, depth_image, camera_intrinsics, camera_pose):
 
         # create scene TSDF from pcd
         # TODO: is this ineffecient?
+        voxel_size = self.size / self.resolution
+        sdf_trunc = 4 * voxel_size
 
-        # evaluate model
+        tsdf = o3d.pipelines.integration.UniformTSDFVolume(
+            length=self.size,
+            resolution=self.resolution,
+            sdf_trunc=sdf_trunc,
+            color_type=o3d.pipelines.integration.TSDFVolumeColorType.NoColor,
+        )
 
-        # return grasps
-        grasps = []
-        scores = []
-        widths = []
+        rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+            o3d.geometry.Image(np.empty_like(depth_image)),
+            o3d.geometry.Image(depth_image),
+            depth_scale=1.0,
+            depth_trunc=2.0,
+            convert_rgb_to_intensity=False,
+        )
 
-        return grasps, scores, widths
+        intrinsic = o3d.camera.PinholeCameraIntrinsic(
+            width=camera_intrinsics.width,
+            height=camera_intrinsics.height,
+            fx=camera_intrinsics.fx,
+            fy=camera_intrinsics.fy,
+            cx=camera_intrinsics.cx,
+            cy=camera_intrinsics.cy,
+        )
+
+        tsdf.integrate(rgbd, intrinsic, np.linalg.inv(camera_pose))
+
+        # tsdf = TSDFVolume(self.size, self.resolution)
+        # tsdf.integrate(depth_image, camera_intrinsics, np.linalg.inv(camera_pose))
+
+        # TODO: is this too slow?
+        shape = (1, self.resolution, self.resolution, self.resolution)
+        tsdf_vol = np.zeros(shape, dtype=np.float32)
+        voxels = tsdf.extract_voxel_grid().get_voxels()
+        for voxel in voxels:
+            i, j, k = voxel.grid_index
+            tsdf_vol[0, i, j, k] = voxel.color[0]
+
+        # # Show point cloud
+        # pcd_new = tsdf.extract_point_cloud()
+        # o3d.visualization.draw_geometries([pcd_new])
+        # # show mesh
+        # mesh = tsdf.extract_triangle_mesh()
+        # mesh.compute_vertex_normals()
+        # o3d.visualization.draw_geometries([mesh])
+
+        # TODO: pull these functions in from utils?
+        # run model
+        qual_vol, rot_vol, width_vol = predict(tsdf_vol, self.pos, self.model, self.device)
+        qual_vol = qual_vol.reshape((self.resolution, self.resolution, self.resolution))
+        rot_vol = rot_vol.reshape((self.resolution, self.resolution, self.resolution, 4))
+        width_vol = width_vol.reshape((self.resolution, self.resolution, self.resolution))
+
+        print('Raw predictions:')
+        print(qual_vol)
+        # print(rot_vol)
+        # print(width_vol)
+
+        # process outputs
+        qual_vol, rot_vol, width_vol = process(tsdf_vol, qual_vol, rot_vol, width_vol, out_th=self.out_th)
+
+        print('Processed predictions:')
+        print(qual_vol)
+
+        qual_vol = bound(qual_vol, voxel_size)
+
+        # select grasps to return
+        grasps, scores = select(qual_vol.copy(), self.pos.view(self.resolution, self.resolution, self.resolution, 3).cpu(), rot_vol, width_vol, \
+                                threshold=self.qual_th, force_detection=self.force_detection, max_filter_size=4)
+        grasps, scores = np.asarray(grasps), np.asarray(scores)
+
+        new_grasps = []
+        grasp_poses = []
+        grasp_widths = []
+        if len(grasps) > 0:
+            if self.best:
+                p = np.arange(len(grasps))
+            else:
+                p = np.random.permutation(len(grasps))
+            for g in grasps[p]:
+                # TODO: what is happening here?
+                pose = g.pose
+                pose.translation = (pose.translation + 0.5) * self.size
+                width = g.width * self.size
+
+                new_grasps.append(Grasp(pose, width))
+                grasp_poses.append(pose)
+                grasp_widths.append(width)
+            scores = scores[p]
+        grasps = new_grasps
+        grasp_scores = list(scores)
+
+        # return grasps, scores, widths
+        # grasp_poses = []
+        # grasp_scores = []
+        # grasp_widths = []
+        return grasp_poses, grasp_scores, grasp_widths
 
 
 
