@@ -15,6 +15,7 @@ import copy
 from planners.contact_graspnet.cgn_model import ContactGraspNet
 from planners.edge_grasp.edge_grasp_model import EdgeGraspNet
 from planners.graspness.graspness_model import GraspnessNet
+from planners.giga.giga_model import GIGANet
 from utils import *
 
 # TODO: load some global config stuff here? scene, table boundaries, etc
@@ -232,12 +233,16 @@ visualize_grasps(pcd_world_crop, gsnet_grasp_poses_world, gsnet_scores,
                 plot_origin=True,
                 gripper_openings=None)
 
-### GIGA ###
+
+### GIGA PACKED ###
+### GIGA PILE? ###
 print('')
 print('')
 print('EVALUATING GIGA')
 # load model
-
+with open('planners/giga/giga_config.yaml', 'r') as f:
+    giga_config = yaml.safe_load(f)
+giganet = GIGANet(giga_config)
 # generate grasp candidates
 
 # visualize grasps

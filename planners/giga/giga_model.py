@@ -6,8 +6,6 @@ from torch import distributions as dist
 from torch_scatter import scatter_mean
 from torch.nn import init
 
-# TODO: eventually, combine unet file with this one
-from .unet import *
 from .giga_utils import *
 
 
@@ -19,17 +17,35 @@ class GIGANet:
     def __init__(self, cfg):
         self._giga_cfg = cfg
 
+        # some params from giga init
+        # TODO: put these in config file
+        self.best=False
+        self.force_detection=False
+        self.qual_th=0.9
+        self.out_th=0.5
+        self.resolution=40
+
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.model = GIGAModel(cfg, self.device)
-        self.model.to(self.device) # TODO: should this happen in model init?
 
-        # load weights
-        # TODO: put this in config?
+        # load weights and put into model
+        # TODO: put some of this in config?
+        checkpoint_path = 'planners/giga/checkpoints/giga_packed.pt'
+        checkpoint = torch.load(checkpoint_path, weights_only=False)
+        self.model.load_state_dict(checkpoint) # TODO: add key ['model_state_dict']?
+        print('Done loading model params.')
 
-        # TODO: anything else?
+        # set up some final variables
+        x, y, z = torch.meshgrid(torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), \
+                                torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), \
+                                torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), \
+                                indexing='ij')
+        # 1, self.resolution, self.resolution, self.resolution, 3
+        pos = torch.stack((x, y, z), dim=-1).float().unsqueeze(0).to(self.device)
+        self.pos = pos.view(1, self.resolution * self.resolution * self.resolution, 3)
 
-
+    # run model for an entire scene
     def predict_scene_grasps(self, some_pcd):
 
         # create scene TSDF from pcd
@@ -91,7 +107,12 @@ class GIGAModel(nn.Module):
                     }
         )
 
-        # TODO: move encoder and decoders to CUDA device?
+        # move encoder and decoders to CUDA device
+        self.decoder_qual.to(device)
+        self.decoder_rot.to(device)
+        self.decoder_width.to(device)
+        self.decoder_tsdf.to(device)
+        self.encoder.to(device)
 
     def forward(self, inputs, p, p_tsdf=None, sample=True, **kwargs):
         ''' Performs a forward pass through the network.
@@ -211,6 +232,7 @@ class GIGAModel(nn.Module):
 ### ENCODER AND DECODER MODULES
 
 # TODO: combine with UNet module?
+# TODO: these can be less generalized?
 class LocalVoxelEncoder(nn.Module):
     ''' 3D-convolutional encoder network for voxel input.
 
