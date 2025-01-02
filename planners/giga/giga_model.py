@@ -29,7 +29,7 @@ class GIGANet:
         self.qual_th=0.9
         self.out_th=0.5
         self.resolution=40
-        self.size = 0.3
+        self.size = 0.6 # 0.3
 
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -80,8 +80,14 @@ class GIGANet:
             cx=camera_intrinsics.cx,
             cy=camera_intrinsics.cy,
         )
+
+        # add offset for TSDF origin to camera pose, don't offset z-coords
+        camera_pose[0,3] += self.size/2.0
+        camera_pose[1,3] += self.size/2.0
+        camera_pose[2,3] += self.size/2.0
         tsdf.integrate(rgbd, intrinsic, np.linalg.inv(camera_pose))
         # TODO: is this part too slow?
+        # what is this doing? why is it pulling out color?
         shape = (1, self.resolution, self.resolution, self.resolution)
         tsdf_vol = np.zeros(shape, dtype=np.float32)
         voxels = tsdf.extract_voxel_grid().get_voxels()
@@ -89,9 +95,9 @@ class GIGANet:
             i, j, k = voxel.grid_index
             tsdf_vol[0, i, j, k] = voxel.color[0]
 
-        # # Show point cloud
-        # pcd_new = tsdf.extract_point_cloud()
-        # o3d.visualization.draw_geometries([pcd_new])
+        # Show point cloud
+        pcd_new = tsdf.extract_point_cloud()
+        o3d.visualization.draw_geometries([pcd_new])
         # # show mesh
         # mesh = tsdf.extract_triangle_mesh()
         # mesh.compute_vertex_normals()
@@ -134,6 +140,7 @@ class GIGANet:
         y_lim = int(limit[1] / voxel_size)
         z_lim = int(limit[2] / voxel_size)
         # TODO: uncomment this once limits are corrected
+        # TODO: is this even necessary?
         # qual_vol[:x_lim] = 0.0
         # qual_vol[-x_lim:] = 0.0
         # qual_vol[:, :y_lim] = 0.0
@@ -192,8 +199,17 @@ class GIGANet:
                 p = np.random.permutation(len(grasps))
             # TODO: what is happening here? some scaling?
             for g in grasps[p]:
-                g.translation = (g.translation + 0.5) * self.size
-                grasp_poses.append(g.as_matrix())
+                # g.translation[2] += 0.5 # set zero of z-coordinate
+                g.translation = g.translation * self.size # scale posiitons to TSDF size
+                new_pose = np.eye(4)
+                # need to swap some axes here, since grasp frame is different than our baseline CGN parameterization
+                # TODO: check changes here
+                new_pose[:3,0] = g.rotation.as_matrix()[:3,0]
+                new_pose[:3,1] = g.rotation.as_matrix()[:3,1]
+                new_pose[:3,2] = g.rotation.as_matrix()[:3,2]
+                offset_dist = 0.0
+                new_pose[:3,3] = g.translation - offset_dist*g.rotation.as_matrix()[:3,0]
+                grasp_poses.append(new_pose)
             for w in widths[p]:
                 width = w * self.size
                 grasp_widths.append(w)
