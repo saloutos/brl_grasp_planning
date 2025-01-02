@@ -167,88 +167,88 @@ pcd_cam_crop = copy.deepcopy(pcd_world_crop).transform(np.linalg.inv(cam_extrins
 
 
 
-# ### CONTACT GRASPNET ###
-# print('')
-# print('')
-# print('EVALUATING CONTACT GRASPNET')
-# # load grasp generation model
-# # TODO: clean up this yaml file
-# with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
-#     cgn_config = yaml.safe_load(f)
-# cgn_config['OPTIMIZER']['batch_size'] = int(1)
-# cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
-# cgn = ContactGraspNet(cgn_config)
-# # generate grasp candidates
-# # TODO: pass in grasp success threshold? take threshold from config file?
-# print('Generating Grasps...')
-# # TODO: is dict with key -1 best way to return these values??
-# # TODO: do we ned to keep other function inputs?
-# cgn_tic = time.time()
-# cgn_grasp_poses_cam, cgn_grasp_scores, cgn_contact_pts, cgn_grasp_widths = cgn.predict_scene_grasps(pcd_cam_crop,
-#                                                                     pc_segments={},
-#                                                                     local_regions=False,
-#                                                                     filter_grasps=True,
-#                                                                     forward_passes=1)
-# cgn_toc = time.time() - cgn_tic
-# # put grasps in world frame
-# cgn_grasp_poses_world_array = np.zeros_like(cgn_grasp_poses_cam[-1])
-# for i,g in enumerate(cgn_grasp_poses_cam[-1]):
-#     cgn_grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
-# cgn_grasp_poses_world = {-1: cgn_grasp_poses_world_array}
-# # visualize grasps
-# visualize_grasps(pcd_world_crop, cgn_grasp_poses_world, cgn_grasp_scores,
-#                 window_name = 'ContactGraspNet',
-#                 plot_origin=True,
-#                 gripper_openings=None)
+### CONTACT GRASPNET ###
+print('')
+print('')
+print('EVALUATING CONTACT GRASPNET')
+# load grasp generation model
+# TODO: clean up this yaml file
+with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
+    cgn_config = yaml.safe_load(f)
+cgn_config['OPTIMIZER']['batch_size'] = int(1)
+cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
+cgn = ContactGraspNet(cgn_config)
+# generate grasp candidates
+# TODO: pass in grasp success threshold? take threshold from config file?
+print('Generating Grasps...')
+# TODO: is dict with key -1 best way to return these values??
+# TODO: do we ned to keep other function inputs?
+cgn_tic = time.time()
+cgn_grasp_poses_cam, cgn_grasp_scores, cgn_contact_pts, cgn_grasp_widths = cgn.predict_scene_grasps(pcd_cam_crop,
+                                                                    pc_segments={},
+                                                                    local_regions=False,
+                                                                    filter_grasps=True,
+                                                                    forward_passes=1)
+cgn_toc = time.time() - cgn_tic
+# put grasps in world frame
+cgn_grasp_poses_world_array = np.zeros_like(cgn_grasp_poses_cam[-1])
+for i,g in enumerate(cgn_grasp_poses_cam[-1]):
+    cgn_grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
+cgn_grasp_poses_world = {-1: cgn_grasp_poses_world_array}
+# visualize grasps
+visualize_grasps(pcd_world_crop, cgn_grasp_poses_world, cgn_grasp_scores,
+                window_name = 'ContactGraspNet',
+                plot_origin=True,
+                gripper_openings=None)
 
 
-# ### EDGE GRASP ###
-# print('')
-# print('')
-# print('EVALUATING EDGE GRASP')
-# # load model
-# with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
-#     edge_grasp_config = yaml.safe_load(f)
-# edge_grasp = EdgeGraspNet(edge_grasp_config)
-# # generate grasp candidates
-# edge_tic = time.time()
-# edge_grasp_poses_world, edge_grasp_scores, edge_grasp_widths = edge_grasp.predict_scene_grasps(pcd_world_crop)
-# edge_toc = time.time() - edge_tic
-# # visualize grasps
-# visualize_grasps(pcd_world_crop, edge_grasp_poses_world, edge_grasp_scores,
-#                 window_name = 'EdgeGrasp',
-#                 plot_origin=True,
-#                 gripper_openings=None)
+### EDGE GRASP ###
+print('')
+print('')
+print('EVALUATING EDGE GRASP')
+# load model
+with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
+    edge_grasp_config = yaml.safe_load(f)
+edge_grasp = EdgeGraspNet(edge_grasp_config)
+# generate grasp candidates
+edge_tic = time.time()
+edge_grasp_poses_world, edge_grasp_scores, edge_grasp_widths = edge_grasp.predict_scene_grasps(pcd_world_crop)
+edge_toc = time.time() - edge_tic
+# visualize grasps
+visualize_grasps(pcd_world_crop, edge_grasp_poses_world, edge_grasp_scores,
+                window_name = 'EdgeGrasp',
+                plot_origin=True,
+                gripper_openings=None)
 
-# ### VN-EDGE GRASP ###
-# # TODO: implement this
-
-
-# ### GRASPNESS ###
-# print('')
-# print('')
-# print('EVALUATING GRASPNESS')
-# # load model
-# with open('planners/graspness/graspness_config.yaml', 'r') as f:
-#     graspness_config = yaml.safe_load(f)
-# gsnet = GraspnessNet(graspness_config)
-# # generate grasp candidates
-# gsnet_tic = time.time()
-# gsnet_grasp_poses_cam, gsnet_grasp_scores, gsnet_grasp_widths = gsnet.predict_scene_grasps(pcd_cam_crop)
-# gsnet_toc = time.time() - gsnet_tic
-# # put grasps in world frame
-# gsnet_grasp_poses_world_array = np.zeros_like(gsnet_grasp_poses_cam[-1])
-# for i,g in enumerate(gsnet_grasp_poses_cam[-1]):
-#     gsnet_grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
-# gsnet_grasp_poses_world = {-1: gsnet_grasp_poses_world_array}
-# # visualize grasps
-# visualize_grasps(pcd_world_crop, gsnet_grasp_poses_world, gsnet_grasp_scores,
-#                 window_name = 'Graspness',
-#                 plot_origin=True,
-#                 gripper_openings=None)
+### VN-EDGE GRASP ###
+# TODO: implement this
 
 
-### GIGA PACKED ###
+### GRASPNESS ###
+print('')
+print('')
+print('EVALUATING GRASPNESS')
+# load model
+with open('planners/graspness/graspness_config.yaml', 'r') as f:
+    graspness_config = yaml.safe_load(f)
+gsnet = GraspnessNet(graspness_config)
+# generate grasp candidates
+gsnet_tic = time.time()
+gsnet_grasp_poses_cam, gsnet_grasp_scores, gsnet_grasp_widths = gsnet.predict_scene_grasps(pcd_cam_crop)
+gsnet_toc = time.time() - gsnet_tic
+# put grasps in world frame
+gsnet_grasp_poses_world_array = np.zeros_like(gsnet_grasp_poses_cam[-1])
+for i,g in enumerate(gsnet_grasp_poses_cam[-1]):
+    gsnet_grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
+gsnet_grasp_poses_world = {-1: gsnet_grasp_poses_world_array}
+# visualize grasps
+visualize_grasps(pcd_world_crop, gsnet_grasp_poses_world, gsnet_grasp_scores,
+                window_name = 'Graspness',
+                plot_origin=True,
+                gripper_openings=None)
+
+
+### GIGA PACKED? ###
 ### GIGA PILE? ###
 print('')
 print('')
@@ -259,10 +259,10 @@ with open('planners/giga/giga_config.yaml', 'r') as f:
 giganet = GIGANet(giga_config)
 # generate grasp candidates
 giga_tic = time.time()
-giga_grasp_poses, giga_grasp_scores, giga_grasp_widths = giganet.predict_scene_grasps(depth_array, k_d405_640x480, cam_extrinsics)
+giga_grasp_poses_world, giga_grasp_scores, giga_grasp_widths = giganet.predict_scene_grasps(depth_array, k_d405_640x480, cam_extrinsics)
 giga_toc = time.time() - giga_tic
 # visualize grasps
-visualize_grasps(pcd_world_crop, giga_grasp_poses, giga_grasp_scores,
+visualize_grasps(pcd_world_crop, giga_grasp_poses_world, giga_grasp_scores,
                 window_name = 'GIGA',
                 plot_origin=True,
                 gripper_openings=None)
@@ -270,22 +270,22 @@ visualize_grasps(pcd_world_crop, giga_grasp_poses, giga_grasp_scores,
 
 
 
-# ### ALL PLANNER OUTPUTS ###
-# # plot world point cloud and grasps from each planner in their own color
-# print('')
-# print('')
-# print('PLOTTING ALL PLANNER OUTPUTS')
-# # print all timings
-# print('')
+### ALL PLANNER OUTPUTS ###
+# plot world point cloud and grasps from each planner in their own color
+print('')
+print('')
+print('PLOTTING ALL PLANNER OUTPUTS')
+# print all timings
+print('')
 print('Evaluation times:')
-# print('ContactGraspNet: ', cgn_toc, ' seconds.')
-# print('EdgeGraspNet: ', edge_toc, ' seconds.')
-# print('Graspness: ', gsnet_toc, ' seconds.')
+print('ContactGraspNet: ', cgn_toc, ' seconds.')
+print('EdgeGraspNet: ', edge_toc, ' seconds.')
+print('Graspness: ', gsnet_toc, ' seconds.')
 print('GIGA: ', giga_toc, ' seconds.')
-# # create plotting window
-# vis_grasps_many_planners(pcd_world,
-#                         [cgn_grasp_poses_world, edge_grasp_poses_world, gsnet_grasp_poses_world],
-#                         [(1,0,0), (0,1,0), (0,0,1)])
+# create plotting window
+vis_grasps_many_planners(pcd_world,
+                        [cgn_grasp_poses_world, edge_grasp_poses_world, gsnet_grasp_poses_world, giga_grasp_poses_world],
+                        [(1,0,0), (1, 0.6, 0.1), (0,1,0), (0,0,1)])
 
 
 

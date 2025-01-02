@@ -284,6 +284,10 @@ def visualize_grasps(pcd_cam, pred_grasps_cam, scores, window_name='Open3D', plo
                 best_grasp_idx = np.argmax(scores[k])
                 draw_grasps(vis, [pred_grasps_cam[k][best_grasp_idx]], np.eye(4), colors=[(1, 0, 0)], gripper_openings=gripper_openings_k)
 
+                # # plot grasp frames for debugging
+                # for g in pred_grasps_cam[k]:
+                #     plot_coordinates(vis, g[:3,3], g[:3,:3])
+
     vis.run()
     vis.destroy_window()
     return

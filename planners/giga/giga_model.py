@@ -24,12 +24,14 @@ class GIGANet:
 
         # some params from giga init
         # TODO: put these in config file
-        self.best=False
-        self.always_detect=True
-        self.qual_th=0.9
-        self.out_th=0.5
-        self.resolution=40
-        self.size = 0.6 # 0.3
+        self.best = False # only return top grasp
+        self.always_detect = True # always return at least one grasp, regardless of threshold
+        self.qual_th = 0.8 # 0.9
+        self.out_th = 0.3 # 0.5
+        self.tsdf_resolution = 100 # 40
+        # TODO: eventually, increase this
+        self.sample_resolution = 100 # 40
+        self.size = 0.8 # 0.3
 
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -37,31 +39,32 @@ class GIGANet:
 
         # load weights and put into model
         # TODO: put some of this in config?
-        checkpoint_path = 'planners/giga/checkpoints/giga_packed.pt'
+        checkpoint_path = 'planners/giga/checkpoints/giga_pile.pt'
         checkpoint = torch.load(checkpoint_path, weights_only=False)
         self.model.load_state_dict(checkpoint)
         print('Done loading model params.')
 
+        # TODO: define separate resolution parameter for this?
         # set up positions to use for grasp centers during prediction
-        x, y, z = torch.meshgrid(torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), \
-                                torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), \
-                                torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), \
+        x, y, z = torch.meshgrid(torch.linspace(start=-0.5, end=0.5 - 1.0 / self.sample_resolution, steps=self.sample_resolution), \
+                                torch.linspace(start=-0.5, end=0.5 - 1.0 / self.sample_resolution, steps=self.sample_resolution), \
+                                torch.linspace(start=-0.5, end=0.5 - 1.0 / self.sample_resolution, steps=self.sample_resolution), \
                                 indexing='ij')
-        # 1, self.resolution, self.resolution, self.resolution, 3
+        # 1, self.sample_resolution, self.sample_resolution, self.sample_resolution, 3
         pos = torch.stack((x, y, z), dim=-1).float().unsqueeze(0).to(self.device)
-        self.pos = pos.view(1, self.resolution * self.resolution * self.resolution, 3)
+        self.sample_pos = pos.view(1, self.sample_resolution * self.sample_resolution * self.sample_resolution, 3)
 
     # run model for an entire scene
     def predict_scene_grasps(self, depth_image, camera_intrinsics, camera_pose):
 
         # create scene TSDF
         # TODO: time this, is it ineffecient?
-        voxel_size = self.size / self.resolution
+        voxel_size = self.size / self.tsdf_resolution
         sdf_trunc = 4 * voxel_size
 
         tsdf = o3d.pipelines.integration.UniformTSDFVolume(
             length=self.size,
-            resolution=self.resolution,
+            resolution=self.tsdf_resolution,
             sdf_trunc=sdf_trunc,
             color_type=o3d.pipelines.integration.TSDFVolumeColorType.NoColor,
         )
@@ -88,7 +91,7 @@ class GIGANet:
         tsdf.integrate(rgbd, intrinsic, np.linalg.inv(camera_pose))
         # TODO: is this part too slow?
         # what is this doing? why is it pulling out color?
-        shape = (1, self.resolution, self.resolution, self.resolution)
+        shape = (1, self.tsdf_resolution, self.tsdf_resolution, self.tsdf_resolution)
         tsdf_vol = np.zeros(shape, dtype=np.float32)
         voxels = tsdf.extract_voxel_grid().get_voxels()
         for voxel in voxels:
@@ -97,22 +100,22 @@ class GIGANet:
 
         # Show point cloud
         pcd_new = tsdf.extract_point_cloud()
-        o3d.visualization.draw_geometries([pcd_new])
-        # # show mesh
-        # mesh = tsdf.extract_triangle_mesh()
-        # mesh.compute_vertex_normals()
+        # o3d.visualization.draw_geometries([pcd_new])
+        # show mesh
+        mesh = tsdf.extract_triangle_mesh()
+        mesh.compute_vertex_normals()
         # o3d.visualization.draw_geometries([mesh])
 
         # run model
         with torch.no_grad():
-            qual_vol, rot_vol, width_vol = self.model( torch.from_numpy(tsdf_vol).to(self.device), self.pos)
+            qual_vol, rot_vol, width_vol = self.model( torch.from_numpy(tsdf_vol).to(self.device), self.sample_pos)
         # move outputs back to cpu, then reshape
         qual_vol = qual_vol.cpu().squeeze().numpy()
         rot_vol = rot_vol.cpu().squeeze().numpy()
         width_vol = width_vol.cpu().squeeze().numpy()
-        qual_vol = qual_vol.reshape((self.resolution, self.resolution, self.resolution))
-        rot_vol = rot_vol.reshape((self.resolution, self.resolution, self.resolution, 4))
-        width_vol = width_vol.reshape((self.resolution, self.resolution, self.resolution))
+        qual_vol = qual_vol.reshape((self.sample_resolution, self.sample_resolution, self.sample_resolution))
+        rot_vol = rot_vol.reshape((self.sample_resolution, self.sample_resolution, self.sample_resolution, 4))
+        width_vol = width_vol.reshape((self.sample_resolution, self.sample_resolution, self.sample_resolution))
 
         # process outputs
         gaussian_filter_sigma=1.0 # TODO: put these in config file
@@ -125,12 +128,14 @@ class GIGANet:
             qual_vol, sigma=gaussian_filter_sigma, mode="nearest"
         )
         # mask out voxels too far away from the surface
+        # TODO: need to change this if we want higher resolution sampling than TSDF?
         outside_voxels = tsdf_vol > out_th
         inside_voxels = np.logical_and(1e-3 < tsdf_vol, tsdf_vol < out_th)
         valid_voxels = ndimage.morphology.binary_dilation(
             outside_voxels, iterations=2, mask=np.logical_not(inside_voxels)
         )
         qual_vol[valid_voxels == False] = 0.0
+
         # reject voxels with predicted widths that are too small or too large
         qual_vol[np.logical_or(width_vol < min_width, width_vol > max_width)] = 0.0
 
@@ -150,7 +155,7 @@ class GIGANet:
         # select grasps to return
         LOW_TH = 0.5 # TODO: put this in config file?
         max_filter_size=4
-        center_vol = self.pos.view(self.resolution, self.resolution, self.resolution, 3).cpu()
+        center_vol = self.sample_pos.view(self.sample_resolution, self.sample_resolution, self.sample_resolution, 3).cpu()
         best_only = False
         qual_vol[qual_vol < LOW_TH] = 0.0
         if self.always_detect and (qual_vol >= self.qual_th).sum() == 0:
@@ -166,6 +171,7 @@ class GIGANet:
 
         # construct grasps
         grasps, scores, widths = [], [], []
+        centers = []
         for index in np.argwhere(mask):
             i, j, k = index
             score = qual_vol[i, j, k]
@@ -177,6 +183,23 @@ class GIGANet:
             grasps.append(grasp)
             scores.append(score)
             widths.append(width)
+            centers.append(center)
+
+        # TODO: show grasp points and orientations here with voxel point cloud and mesh?
+        center_pts = (np.asarray(centers)+0.5)*self.size
+        center_colors = np.zeros_like(center_pts)
+        center_colors[:,0] = 1.0
+        chosen_centers_pcd = o3d.geometry.PointCloud()
+        chosen_centers_pcd.points = o3d.utility.Vector3dVector(center_pts)
+        chosen_centers_pcd.colors = o3d.utility.Vector3dVector(center_colors)
+        base_pts = np.asarray(pcd_new.points)
+        base_colors = np.zeros_like(base_pts)
+        # TODO: save quality score for each base point to use as affordance map?
+        base_colors[:,2] = 1.0
+        base_pcd = o3d.geometry.PointCloud()
+        base_pcd.points = o3d.utility.Vector3dVector(base_pts)
+        base_pcd.colors = o3d.utility.Vector3dVector(base_colors)
+        # o3d.visualization.draw_geometries([base_pcd, chosen_centers_pcd])
 
         # sort grasps by score
         sorted_grasps = [grasps[i] for i in reversed(np.argsort(scores))]
@@ -197,23 +220,22 @@ class GIGANet:
                 p = np.arange(len(grasps))
             else:
                 p = np.random.permutation(len(grasps))
-            # TODO: what is happening here? some scaling?
             for g in grasps[p]:
                 # g.translation[2] += 0.5 # set zero of z-coordinate
                 g.translation = g.translation * self.size # scale posiitons to TSDF size
                 new_pose = np.eye(4)
                 # need to swap some axes here, since grasp frame is different than our baseline CGN parameterization
-                # TODO: check changes here
-                new_pose[:3,0] = g.rotation.as_matrix()[:3,0]
-                new_pose[:3,1] = g.rotation.as_matrix()[:3,1]
+                new_pose[:3,0] = g.rotation.as_matrix()[:3,1]
+                new_pose[:3,1] = -g.rotation.as_matrix()[:3,0]
                 new_pose[:3,2] = g.rotation.as_matrix()[:3,2]
-                offset_dist = 0.0
-                new_pose[:3,3] = g.translation - offset_dist*g.rotation.as_matrix()[:3,0]
+                offset_dist = 0.06
+                new_pose[:3,3] = g.translation - offset_dist*g.rotation.as_matrix()[:3,2]
                 grasp_poses.append(new_pose)
             for w in widths[p]:
                 width = w * self.size
                 grasp_widths.append(w)
-            grasp_scores = list(scores[p])
+            for s in scores[p]:
+                grasp_scores.append(s)
 
         # convert to dict format used by other models
         grasp_poses_array = np.zeros((len(grasp_scores),4,4))
