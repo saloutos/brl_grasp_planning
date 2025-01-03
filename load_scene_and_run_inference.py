@@ -22,9 +22,8 @@ from utils import *
 # TODO: load some global config stuff here? scene, table boundaries, etc
 
 
-# Initialize GLFW and OpenCV window
+# Initialize GLFW
 glfw.init()
-cv2.namedWindow("MuJoCo Camera", cv2.WINDOW_AUTOSIZE)
 
 # Load the MuJoCo model
 scene_path = os.path.join(get_base_path(), "scene", "scene_with_hand.xml")
@@ -49,12 +48,10 @@ cam_cy = cam_height/2
 cam_f = cam_height / (2 * math.tan(cam_fovy / 2))
 k_d405_640x480 = CameraIntrinsic(cam_width, cam_height, cam_f, cam_f, cam_cx, cam_cy)
 
-# Create an OpenGL context and GLFW window (needed for offscreen rendering in MuJoCo)
-glfw_window = glfw.create_window(cam_width, cam_height, "mj_dummy", None, None)
-glfw.make_context_current(glfw_window)
-
 # Setup MuJoCo rendering context
-gl_context = mujoco.MjrContext(model, mujoco.mjtFontScale.mjFONTSCALE_150)
+gl_context = mujoco.GLContext(cam_width, cam_height)
+gl_context.make_current()
+renderer = mujoco.MjrContext(model, mujoco.mjtFontScale.mjFONTSCALE_150)
 
 # Get z-buffer properties
 # https://github.com/google-deepmind/dm_control/blob/main/dm_control/mujoco/engine.py#L817
@@ -73,7 +70,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     cam.type = mujoco.mjtCamera.mjCAMERA_FIXED  # Fixed camera
 
     # Prepare to render
-    scene = mujoco.MjvScene(model, maxgeom=1000)
+    scene = mujoco.MjvScene(model, maxgeom=20000)
 
     # Main simulation loop
     sim_i = 0
@@ -100,16 +97,14 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     # update camera stuff
     mujoco.mjv_updateScene(model, data, mujoco.MjvOption(), None, cam, mujoco.mjtCatBit.mjCAT_ALL, scene)
 
-    
-
     # Render the scene to an offscreen buffer
     viewport = mujoco.MjrRect(0, 0, cam_width, cam_height)
-    mujoco.mjr_render(viewport, scene, gl_context)
+    mujoco.mjr_render(viewport, scene, renderer)
 
     # Read pixels from the OpenGL buffer (MuJoCo renders in RGB format)
     rgb_array = np.zeros((cam_height, cam_width, 3), dtype=np.uint8)  # Image size: height=480, width=640
     depth_array = np.zeros((cam_height, cam_width), dtype=np.float32)  # Depth array
-    mujoco.mjr_readPixels(rgb_array, depth_array, viewport, gl_context)
+    mujoco.mjr_readPixels(rgb_array, depth_array, viewport, renderer)
 
     # Flip the image vertically (because OpenGL origin is bottom-left)
     rgb_array = np.flipud(rgb_array)
@@ -151,32 +146,15 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     # get cropped point cloud in camera frame as well
     pcd_cam_crop = copy.deepcopy(pcd_world_crop).transform(np.linalg.inv(cam_extrinsics))
 
-    # TODO: create TSDF here instead of in GIGA model?
-
-
-
     # # Convert RGB to BGR for OpenCV
     # bgr_image = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
-
     # # Display the image in the OpenCV window
     # cv2.imshow("MuJoCo Camera", bgr_image)
-
     # # Show depth image
     # depth_array_colored = get_depth_display(depth_array_clipped)
     # cv2.imshow("Depth Map", depth_array_colored)
-
-    # # wait until button press while focused on opencv window
-    # cv2.waitKey(0)
-    # # Clean up OpenCV and GLFW
-    # cv2.destroyAllWindows()
-    # glfw.terminate()
-
-
-
     # Show point cloud
     # o3d.visualization.draw_geometries([pcd_world])
-
-    # print(viewer.user_scn.maxgeom)
 
     ### CONTACT GRASPNET ###
     print('')
@@ -283,7 +261,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     #                 gripper_openings=None)
     # TODO: visualize the estimated meshes too?
     # also visualize grasps in mujoco
-    mjv_draw_grasps(viewer, giga_grasp_poses_world[-1], rgba=[0,0,1, 0.25])
+    mjv_draw_grasps(viewer, giga_grasp_poses_world[-1], rgba=[0,0.7,1, 0.5])
 
     ### ALL PLANNER OUTPUTS ###
     # plot world point cloud and grasps from each planner in their own color
@@ -300,7 +278,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     # create plotting window
     vis_grasps_many_planners(pcd_world,
                             [cgn_grasp_poses_world, edge_grasp_poses_world, gsnet_grasp_poses_world, giga_grasp_poses_world],
-                            [(1,0,0), (1, 0.6, 0.1), (0,1,0), (0,0,1)])
+                            [(1,0,0), (1, 0.6, 0.1), (0,1,0), (0,0.7,1)])
 
     while viewer.is_running(): pass
 
