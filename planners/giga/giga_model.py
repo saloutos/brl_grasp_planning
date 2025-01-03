@@ -27,7 +27,6 @@ class GIGANet:
         self.best = False # only return top grasp
         self.always_detect = True # always return at least one grasp, regardless of threshold
         self.qual_th = 0.8 # 0.9
-        self.out_th = 0.3 # 0.5
         self.tsdf_resolution = 100 # 40
         # TODO: eventually, increase this
         self.sample_resolution = 100 # 40
@@ -108,14 +107,33 @@ class GIGANet:
 
         # run model
         with torch.no_grad():
-            qual_vol, rot_vol, width_vol = self.model( torch.from_numpy(tsdf_vol).to(self.device), self.sample_pos)
+            qual_vol, rot_vol, width_vol, occ_est_vol = self.model( torch.from_numpy(tsdf_vol).to(self.device), self.sample_pos, p_tsdf=self.sample_pos)
         # move outputs back to cpu, then reshape
         qual_vol = qual_vol.cpu().squeeze().numpy()
         rot_vol = rot_vol.cpu().squeeze().numpy()
         width_vol = width_vol.cpu().squeeze().numpy()
+        occ_est_vol = occ_est_vol.cpu().squeeze().numpy()
         qual_vol = qual_vol.reshape((self.sample_resolution, self.sample_resolution, self.sample_resolution))
         rot_vol = rot_vol.reshape((self.sample_resolution, self.sample_resolution, self.sample_resolution, 4))
         width_vol = width_vol.reshape((self.sample_resolution, self.sample_resolution, self.sample_resolution))
+        occ_est_vol = occ_est_vol.reshape((self.sample_resolution, self.sample_resolution, self.sample_resolution))
+
+        # TODO: take a closer look at this, maybe sigmoid on occ output isn't the best?
+        # occ_thresh = 0.002
+        # occ_est_vol[occ_est_vol>=occ_thresh] = 1.0
+        # occ_est_vol[occ_est_vol<occ_thresh] = 0.0
+        # pt_vol = self.sample_pos.view(self.sample_resolution, self.sample_resolution, self.sample_resolution, 3).cpu()
+        # occ_est_pts = []
+        # for index in np.argwhere(occ_est_vol):
+        #     i, j, k = index
+        #     pt = pt_vol[i, j, k].numpy()
+        #     occ_est_pts.append(pt)
+        # occ_est_pts = (np.asarray(occ_est_pts)+0.5)*self.size
+        # occ_est_colors = np.zeros_like(occ_est_pts)
+        # occ_est_pcd = o3d.geometry.PointCloud()
+        # occ_est_pcd.points = o3d.utility.Vector3dVector(occ_est_pts)
+        # occ_est_pcd.colors = o3d.utility.Vector3dVector(occ_est_colors)
+        # o3d.visualization.draw_geometries([occ_est_pcd])
 
         # process outputs
         gaussian_filter_sigma=1.0 # TODO: put these in config file
@@ -186,20 +204,20 @@ class GIGANet:
             centers.append(center)
 
         # TODO: show grasp points and orientations here with voxel point cloud and mesh?
-        center_pts = (np.asarray(centers)+0.5)*self.size
-        center_colors = np.zeros_like(center_pts)
-        center_colors[:,0] = 1.0
-        chosen_centers_pcd = o3d.geometry.PointCloud()
-        chosen_centers_pcd.points = o3d.utility.Vector3dVector(center_pts)
-        chosen_centers_pcd.colors = o3d.utility.Vector3dVector(center_colors)
-        base_pts = np.asarray(pcd_new.points)
-        base_colors = np.zeros_like(base_pts)
-        # TODO: save quality score for each base point to use as affordance map?
-        base_colors[:,2] = 1.0
-        base_pcd = o3d.geometry.PointCloud()
-        base_pcd.points = o3d.utility.Vector3dVector(base_pts)
-        base_pcd.colors = o3d.utility.Vector3dVector(base_colors)
-        # o3d.visualization.draw_geometries([base_pcd, chosen_centers_pcd])
+        # center_pts = (np.asarray(centers)+0.5)*self.size
+        # center_colors = np.zeros_like(center_pts)
+        # center_colors[:,0] = 1.0
+        # chosen_centers_pcd = o3d.geometry.PointCloud()
+        # chosen_centers_pcd.points = o3d.utility.Vector3dVector(center_pts)
+        # chosen_centers_pcd.colors = o3d.utility.Vector3dVector(center_colors)
+        # base_pts = np.asarray(pcd_new.points)
+        # base_colors = np.zeros_like(base_pts)
+        # # TODO: save quality score for each base point to use as affordance map?
+        # base_colors[:,2] = 1.0
+        # base_pcd = o3d.geometry.PointCloud()
+        # base_pcd.points = o3d.utility.Vector3dVector(base_pts)
+        # base_pcd.colors = o3d.utility.Vector3dVector(base_colors)
+        # o3d.visualization.draw_geometries([base_pcd, chosen_centers_pcd, occ_est_pcd])
 
         # sort grasps by score
         sorted_grasps = [grasps[i] for i in reversed(np.argsort(scores))]
@@ -310,20 +328,15 @@ class GIGAModel(nn.Module):
             sample (bool): whether to sample for z
             p_tsdf (tensor): tsdf query points, B*N_P*3
         '''
-        #############
-        if isinstance(p, dict):
-            batch_size = p['p'].size(0)
-        else:
-            batch_size = p.size(0)
         c = self.encode_inputs(inputs)
-        # feature = self.query_feature(p, c)
-        # qual, rot, width = self.decode_feature(p, feature)
         qual, rot, width = self.decode(p, c)
         if p_tsdf is not None:
-            if self.detach_tsdf:
-                for k, v in c.items():
-                    c[k] = v.detach()
             tsdf = self.decoder_tsdf(p_tsdf, c, **kwargs)
+            # TODO: map values to 0-1 interval somehow??
+            # tsdf = torch.exp(tsdf)
+            tsdf = torch.sigmoid(tsdf)
+            # logits = self.decoder_tsdf(p_tsdf, c, **kwargs)
+            # tsdf = dist.Bernoulli(logits=logits)
             return qual, rot, width, tsdf
         else:
             return qual, rot, width
@@ -345,19 +358,7 @@ class GIGAModel(nn.Module):
         else:
             # Return inputs?
             c = torch.empty(inputs.size(0), 0)
-
         return c
-
-    def query_feature(self, p, c):
-        return self.decoder_qual.query_feature(p, c)
-
-    def decode_feature(self, p, feature):
-        qual = self.decoder_qual.compute_out(p, feature)
-        qual = torch.sigmoid(qual)
-        rot = self.decoder_rot.compute_out(p, feature)
-        rot = nn.functional.normalize(rot, dim=2)
-        width = self.decoder_width.compute_out(p, feature)
-        return qual, rot, width
 
     def decode_occ(self, p, c, **kwargs):
         ''' Returns occupancy probabilities for the sampled points.
