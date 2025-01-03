@@ -5,6 +5,8 @@ import os
 import open3d as o3d
 import cv2
 import matplotlib.pyplot as plt
+import mujoco as mj
+import mujoco.viewer as mjv
 
 # TODO: get rid of this function
 def get_base_path():
@@ -203,8 +205,8 @@ def vis_grasps_many_planners(pcd_input, pred_grasps=[], pred_grasp_colors=[], ot
     vis.create_window(window_name="Many Planners")
     vis.add_geometry(pcd_input)
 
-    # plot the origin
-    plot_coordinates(vis, np.zeros(3,),np.eye(3,3), central_color=(0.5, 0.5, 0.5))
+    # plot the origin?
+    # plot_coordinates(vis, np.zeros(3,),np.eye(3,3), central_color=(0.5, 0.5, 0.5))
 
     # plot other frames
     for f in other_frames:
@@ -391,3 +393,74 @@ def draw_grasps(vis, grasps, cam_pose, gripper_openings, colors=[(0, 1., 0)]):
     colors = np.repeat(colors, N - 1, axis=0)
     line_set.colors = o3d.utility.Vector3dVector(colors)
     vis.add_geometry(line_set)
+
+def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), rgba=[0.0, 1.0, 0.0, 0.1]):
+    # TODO: add gripper openings, multiple colors back in?
+    """
+    Draws wireframe grasps from given camera pose and with given gripper openings
+
+    Arguments:
+        grasps {np.ndarray} -- Nx4x4 grasp pose transformations
+        cam_pose {np.ndarray} -- 4x4 camera pose transformation
+        gripper_openings {np.ndarray} -- Nx1 gripper openings
+
+    Keyword Arguments:
+        color {tuple} -- color of all grasps (default: {(0,1.,0)})
+        colors {np.ndarray} -- Nx3 color of each grasp (default: {None})
+        tube_radius {float} -- Radius of the grasp wireframes (default: {0.0008})
+        show_gripper_mesh {bool} -- Renders the gripper mesh for one of the grasp poses (default: {False})
+    """
+
+    # TODO: could clean up a little bit?
+    # TODO: correct file path?
+    control_points = np.load('panda.npy')[:, :3]
+    control_points = [[0, 0, 0], control_points[0, :], control_points[1, :], control_points[-2, :], control_points[-1, :]]
+    control_points = np.asarray(control_points, dtype=np.float32)
+    control_points[1:3, 2] = 0.0584
+    control_points = np.tile(np.expand_dims(control_points, 0), [1, 1, 1])
+    gripper_control_points = control_points.squeeze()
+    mid_point = 0.5*(gripper_control_points[1, :] + gripper_control_points[2, :])
+    grasp_line_plot = np.array([np.zeros((3,)), mid_point, gripper_control_points[1], gripper_control_points[3],
+                                gripper_control_points[1], gripper_control_points[2], gripper_control_points[4]])
+
+    index = viewer.user_scn.ngeom
+    # for i, (g,g_opening) in enumerate(zip(grasps, gripper_openings)):
+    for i, g in enumerate(grasps):
+        gripper_control_points_closed = grasp_line_plot.copy()
+        g_opening = 0.08
+        gripper_control_points_closed[2:,0] = np.sign(grasp_line_plot[2:,0]) * g_opening/2
+
+        pts = np.matmul(gripper_control_points_closed, g[:3, :3].T)
+        pts += np.expand_dims(g[:3, 3], 0)
+        pts_homog = np.concatenate((pts, np.ones((7, 1))),axis=1)
+        pts = np.dot(pts_homog, cam_pose.T)[:,:3]
+
+        # line 1
+        mj.mjv_connector(viewer.user_scn.geoms[index], mj.mjtGeom.mjGEOM_LINE, 2, pts[0,:], pts[1,:])
+        viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        viewer.user_scn.geoms[index].label = ''
+        index+=1
+        # line 2
+        mj.mjv_connector(viewer.user_scn.geoms[index], mj.mjtGeom.mjGEOM_LINE, 2, pts[2,:], pts[3,:])
+        viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        viewer.user_scn.geoms[index].label = ''
+        index+=1
+        # line 3
+        mj.mjv_connector(viewer.user_scn.geoms[index], mj.mjtGeom.mjGEOM_LINE, 2, pts[2,:], pts[5,:])
+        viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        viewer.user_scn.geoms[index].label = ''
+        index+=1
+        # line 4
+        mj.mjv_connector(viewer.user_scn.geoms[index], mj.mjtGeom.mjGEOM_LINE, 2, pts[5,:], pts[6,:])
+        viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        viewer.user_scn.geoms[index].label = ''
+        index+=1
+
+    # update number of geoms and sync
+    viewer.user_scn.ngeom = index
+    viewer.sync()
+
+
+
+
+
