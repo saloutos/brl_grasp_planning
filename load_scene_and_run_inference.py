@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import open3d as o3d
 import yaml
 import copy
+import math
 
 from planners.contact_graspnet.cgn_model import ContactGraspNet
 from planners.edge_grasp.edge_grasp_model import EdgeGraspNet
@@ -39,8 +40,17 @@ data = mujoco.MjData(model)
 cam_name = "overhead_cam"
 cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, cam_name)
 
+# set up camera intrinsics
+cam_fovy = np.deg2rad(model.cam_fovy[cam_id])
+cam_width = 640
+cam_height = 480
+cam_cx = cam_width/2
+cam_cy = cam_height/2
+cam_f = cam_height / (2 * math.tan(cam_fovy / 2))
+k_d405_640x480 = CameraIntrinsic(cam_width, cam_height, cam_f, cam_f, cam_cx, cam_cy)
+
 # Create an OpenGL context and GLFW window (needed for offscreen rendering in MuJoCo)
-glfw_window = glfw.create_window(640, 480, "mj_dummy", None, None)
+glfw_window = glfw.create_window(cam_width, cam_height, "mj_dummy", None, None)
 glfw.make_context_current(glfw_window)
 
 # Setup MuJoCo rendering context
@@ -90,13 +100,15 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     # update camera stuff
     mujoco.mjv_updateScene(model, data, mujoco.MjvOption(), None, cam, mujoco.mjtCatBit.mjCAT_ALL, scene)
 
+    
+
     # Render the scene to an offscreen buffer
-    viewport = mujoco.MjrRect(0, 0, 640, 480)
+    viewport = mujoco.MjrRect(0, 0, cam_width, cam_height)
     mujoco.mjr_render(viewport, scene, gl_context)
 
     # Read pixels from the OpenGL buffer (MuJoCo renders in RGB format)
-    rgb_array = np.zeros((480, 640, 3), dtype=np.uint8)  # Image size: height=480, width=640
-    depth_array = np.zeros((480, 640), dtype=np.float32)  # Depth array
+    rgb_array = np.zeros((cam_height, cam_width, 3), dtype=np.uint8)  # Image size: height=480, width=640
+    depth_array = np.zeros((cam_height, cam_width), dtype=np.float32)  # Depth array
     mujoco.mjr_readPixels(rgb_array, depth_array, viewport, gl_context)
 
     # Flip the image vertically (because OpenGL origin is bottom-left)
@@ -125,7 +137,6 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     cam_extrinsics = cam_extrinsics @ T_camzforward_cam
 
     # get point cloud
-    k_d405_640x480 = CameraIntrinsic(width=640, height=480, fx=382, fy=382, cx=320, cy=240)
     pc_xyz, pc_rgb = depth2pc(depth_array, k_d405_640x480, rgb_array)
     pcd_cam = o3d.geometry.PointCloud()
     pcd_cam.points = o3d.utility.Vector3dVector(pc_xyz)
