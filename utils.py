@@ -5,8 +5,7 @@ import os
 import open3d as o3d
 import cv2
 import matplotlib.pyplot as plt
-import mujoco as mj
-import mujoco.viewer as mjv
+import mujoco.viewer
 
 # TODO: get rid of this function
 def get_base_path():
@@ -15,27 +14,66 @@ def get_base_path():
     return base_dir_path
 
 ### PRIMITIVE OBJECT STUFF ###
-# TODO: start with just loading one object
-# TODO: then load same type over and over
-# TODO: then change types, add colors, etc.
 
-# string for object xml
+# load random primitive objects (in grid?) (random orientations?)
+# TODO: could also randomly load from single object yaml files?
+def load_random_grid_primitives(spec: mujoco.MjSpec, grid_side_length=4):
+    total_length = 0.4
+    obj_mass_range = [0.1, 1.0]
+    obj_size_0_range = [0.02, 0.04] # radius or cube side, nominal is 0.03
+    obj_size_1_range = [0.04, 0.08] # height, nominal is 0.06
+
+    edge = np.linspace(-total_length / 2, total_length / 2, grid_side_length)
+    coordinate_grid_x, coordinate_grid_y = np.meshgrid(edge, edge)
+    coordinate_grid_x = coordinate_grid_x.flatten()
+    coordinate_grid_y = coordinate_grid_y.flatten()
+
+    # iterate through grid
+    # randomly sample object type, size, mass
+    for i in range(len(coordinate_grid_x)):
+        # sample object type (0: box, 1: cylinder, 2: sphere)
+        temp_type = np.random.randint(0, 3)
+        obj_mass = np.random.uniform(obj_mass_range[0], obj_mass_range[1]) # default: 0.2
+        if (temp_type==0):
+            # box
+            obj_type = mujoco.mjtGeom.mjGEOM_BOX
+            size_0 = np.random.uniform(obj_size_0_range[0], obj_size_0_range[1])
+            size_1 = np.random.uniform(obj_size_0_range[0], obj_size_0_range[1])
+            size_2 = np.random.uniform(obj_size_0_range[0], obj_size_0_range[1])
+            obj_size = [size_0, size_1, size_2]
+        elif (temp_type==1):
+            # cylinder
+            obj_type = mujoco.mjtGeom.mjGEOM_CYLINDER
+            size_0 = np.random.uniform(obj_size_0_range[0], obj_size_0_range[1])
+            size_1 = np.random.uniform(obj_size_1_range[0], obj_size_1_range[1])
+            obj_size = [size_0, size_1, 0]
+        elif (temp_type==2):
+            # sphere
+            obj_type = mujoco.mjtGeom.mjGEOM_SPHERE
+            size_0 = np.random.uniform(obj_size_0_range[0], obj_size_0_range[1])
+            obj_size = [size_0, size_0, size_0]
+        # actually load object
+        obj_name = 'test_obj_'+str(i+1)
+        obj_pos = [coordinate_grid_x[i], coordinate_grid_y[i], 0.2] # TODO: add some random noise to z coord?
+        obj_rgba = list(np.random.rand(3)) + [1.0] # can also randomize color
+        obj_quat = [0, 0, 0, 1] # TODO: also randomize orientation!!!
+        load_single_primitive(spec, obj_name, obj_pos, obj_type=obj_type, size=obj_size, mass=obj_mass, rgba=obj_rgba, quat=obj_quat)
+
+
+# load objects from yaml description
+def load_objects_from_yaml(spec: mujoco.MjSpec, yaml_file_path):
+    # TODO: take yaml path or contents?
+    # can define multiple objects per yaml, or load single object from many yamls? or both
+    a = 1
 
 
 
-# object class
-# TODO: cube class? cylinder class? box class?
-# TODO: include friction, contact parameters?
 
-
-
-# list of valid object types
-
-# load object with type, size, mass, friction, name, color, at pos, quat and attach to world spec
-def load_single_object(spec: mujoco.MjSpec,
+# load primitive object with type, size, mass, friction, name, color, at pos, quat and attach to world spec
+def load_single_primitive(spec: mujoco.MjSpec,
                         name,
                         pos,
-                        type=mujoco.mjtGeom.mjGEOM_SPHERE, # only allow sphere, cylinder, box
+                        obj_type=mujoco.mjtGeom.mjGEOM_SPHERE, # only allow sphere, cylinder, box
                         size=[0.1, 0.1, 0.1], # always needs 3 elements, but unused elements can be 0
                         mass=0.1,
                         friction=[1.0, 0.02, 0.0005], # sliding, torsion, rolling
@@ -48,7 +86,7 @@ def load_single_object(spec: mujoco.MjSpec,
     geom = body.add_geom()
 
     # Set some default params of geom, body, and joint
-    geom.group = 2
+    geom.group = 1
     geom.contype = 1
     geom.conaffinity = 1
     geom.condim = 6
@@ -73,7 +111,7 @@ def load_single_object(spec: mujoco.MjSpec,
     # Set specificed params
     geom.name = name
     geom.rgba = rgba
-    geom.type = type
+    geom.type = obj_type
     geom.size = size
     # TODO: should friction be a default?
     geom.friction = friction
@@ -83,14 +121,14 @@ def load_single_object(spec: mujoco.MjSpec,
     # NOTE: can also set position and orientation of inertial frame
     # body.ipos = [0, 0, 0]
     # body.iquat = [0, 0, 0, 1]
-    if type==mujoco.mjtGeom.mjGEOM_SPHERE:
+    if obj_type==mujoco.mjtGeom.mjGEOM_SPHERE:
         i = (2/5)*mass*(size[0]**2)
         body.inertia = [i, i, i]
-    elif type==mujoco.mjtGeom.mjGEOM_CYLINDER:
+    elif obj_type==mujoco.mjtGeom.mjGEOM_CYLINDER:
         i_xy = (1/4)*mass*size[0]**2 + 1/12*mass*size[1]**2
         i_z = (1/2)*mass*size[0]**2
         body.inertia = [i_xy, i_xy, i_z]
-    elif type==mujoco.mjtGeom.mjGEOM_BOX:
+    elif obj_type==mujoco.mjtGeom.mjGEOM_BOX:
         i_x = (1/12)*mass*((2*size[1])**2 + (2*size[2])**2)
         i_y = (1/12)*mass*((2*size[0])**2 + (2*size[2])**2)
         i_z = (1/12)*mass*((2*size[0])**2 + (2*size[1])**2)
@@ -111,46 +149,6 @@ def load_single_object(spec: mujoco.MjSpec,
     #     obj_qpos = initial_pos + initial_quat
     #     new_qpos = current_qpos + obj_qpos
     #     spec.keys[0].qpos = new_qpos
-
-
-
-
-# function to load random objects in grid
-# function to load list/file of objects at specified positions, quats, masses, etc
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ### YCB OBJECT STUFF ###
@@ -201,7 +199,7 @@ def load_ycb_obj(spec: mujoco.MjSpec, obj_name, initial_pos=[0.0, 0.0, 1.0]):
     geom.material = obj_name + "_material"
 
     # TODO: should this be body pos?
-    geom.pos = initial_pos
+    body.pos = initial_pos
 
 
     # Append to keyframe
@@ -577,22 +575,22 @@ def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), rgba=[0.0, 1.0, 0.0, 0.1
         pts = np.dot(pts_homog, cam_pose.T)[:,:3]
 
         # line 1
-        mj.mjv_connector(viewer.user_scn.geoms[index], mj.mjtGeom.mjGEOM_LINE, 2, pts[0,:], pts[1,:])
+        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[0,:], pts[1,:])
         viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 2
-        mj.mjv_connector(viewer.user_scn.geoms[index], mj.mjtGeom.mjGEOM_LINE, 2, pts[2,:], pts[3,:])
+        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[2,:], pts[3,:])
         viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 3
-        mj.mjv_connector(viewer.user_scn.geoms[index], mj.mjtGeom.mjGEOM_LINE, 2, pts[2,:], pts[5,:])
+        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[2,:], pts[5,:])
         viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 4
-        mj.mjv_connector(viewer.user_scn.geoms[index], mj.mjtGeom.mjGEOM_LINE, 2, pts[5,:], pts[6,:])
+        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[5,:], pts[6,:])
         viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
         index+=1

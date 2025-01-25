@@ -31,12 +31,9 @@ scene_path = os.path.join(get_base_path(), "scene", "scene_with_hand.xml")
 spec = mujoco.MjSpec.from_file(scene_path)
 
 # np.random.seed(0)
-load_random_grid_ycb(spec, 4)
-
-# TODO: add non-ycb objects here?
-# load_random_grid_primitives(spec, 4)
-# load_from_file_primitives(spec, file)
-
+# CHOOSE TO LOAD YCB MESHES OR RANDOM PRIMITIVES?
+# load_random_grid_ycb(spec, 4)
+load_random_grid_primitives(spec, 4)
 
 model = spec.compile()
 data = mujoco.MjData(model)
@@ -65,24 +62,24 @@ extent = model.stat.extent
 near = model.vis.map.znear * extent # 0.005
 far = model.vis.map.zfar * extent # 30
 
+
+# Define the camera parameters (you can modify these based on your need)
+# https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-camera
+cam = mujoco.MjvCamera()
+cam.fixedcamid = cam_id  # Use the camera ID obtained earlier
+cam.type = mujoco.mjtCamera.mjCAMERA_FIXED  # Fixed camera
+
+# Prepare to render
+scene = mujoco.MjvScene(model, maxgeom=20000)
+
+# Main simulation loop
+sim_i = 0
+n_grasps  = 0
+n_frame_geoms = 0
+cam_vis_idx = None
+
 # init mujoco viewer
 with mujoco.viewer.launch_passive(model, data) as viewer:
-
-
-    # Define the camera parameters (you can modify these based on your need)
-    # https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-camera
-    cam = mujoco.MjvCamera()
-    cam.fixedcamid = cam_id  # Use the camera ID obtained earlier
-    cam.type = mujoco.mjtCamera.mjCAMERA_FIXED  # Fixed camera
-
-    # Prepare to render
-    scene = mujoco.MjvScene(model, maxgeom=20000)
-
-    # Main simulation loop
-    sim_i = 0
-    n_grasps  = 0
-    n_frame_geoms = 0
-    cam_vis_idx = None
 
     # Step the simulation several times
     mujoco.mj_step(model, data)
@@ -94,7 +91,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
     mujoco.mju_mat2Quat(base_quat_des, np.eye(3).flatten())
     data.mocap_quat = base_quat_des
     data.ctrl[0] = 200 # not real units, goes from 0 to 255
-    for _ in range(100):
+    for _ in range(1000):
         mujoco.mj_step(model, data)
 
     # then sync viewer

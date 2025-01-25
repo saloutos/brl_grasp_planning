@@ -32,12 +32,12 @@ spec = mujoco.MjSpec.from_file(scene_path)
 
 # np.random.seed(0)
 # Load objects
-load_single_object(spec, 'test_obj', [0.0, 0.0, 0.2],
-                    type=mujoco.mjtGeom.mjGEOM_SPHERE,
-                    size=[0.05, 0, 0],
-                    mass=0.5,
-                    rgba=[0.1, 0.9, 0.1, 1.0])
-# load_random_grid_primitives(spec, 4)
+# load_single_primitive(spec, 'test_obj', [0.0, 0.0, 0.2],
+#                     obj_type=mujoco.mjtGeom.mjGEOM_SPHERE,
+#                     size=[0.05, 0, 0],
+#                     mass=0.5,
+#                     rgba=[0.1, 0.9, 0.1, 1.0])
+load_random_grid_primitives(spec, 4)
 # load_from_file_primitives(spec, file)
 
 
@@ -100,8 +100,20 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         mujoco.mju_mat2Quat(base_quat_des, np.eye(3).flatten())
         data.mocap_quat = base_quat_des
         data.ctrl[0] = 200 # not real units, goes from 0 to 255
+
+        if sim_i==2000:
+            index = viewer.user_scn.ngeom
+            mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, [0,0,0], [0,0,2.0])
+            viewer.user_scn.geoms[index].rgba = np.array([1.0, 0.0, 0.0, 0.1])
+            viewer.user_scn.geoms[index].label = ''
+            index+=1
+            # update number of geoms and sync
+            viewer.user_scn.ngeom = index
+            print("Added line!")
+
         # then sync viewer
         viewer.sync()
+
 
         # # update camera stuff less often
         # if sim_i % 100 == 0:
@@ -169,7 +181,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         #     break
 
         sim_i += 1
-
+        print(sim_i)
 
 
 # Clean up OpenCV and GLFW
