@@ -14,6 +14,145 @@ def get_base_path():
     base_dir_path = os.path.dirname(file_path)
     return base_dir_path
 
+### PRIMITIVE OBJECT STUFF ###
+# TODO: start with just loading one object
+# TODO: then load same type over and over
+# TODO: then change types, add colors, etc.
+
+# string for object xml
+
+
+
+# object class
+# TODO: cube class? cylinder class? box class?
+# TODO: include friction, contact parameters?
+
+
+
+# list of valid object types
+
+# load object with type, size, mass, friction, name, color, at pos, quat and attach to world spec
+def load_single_object(spec: mujoco.MjSpec,
+                        name,
+                        pos,
+                        type=mujoco.mjtGeom.mjGEOM_SPHERE, # only allow sphere, cylinder, box
+                        size=[0.1, 0.1, 0.1], # always needs 3 elements, but unused elements can be 0
+                        mass=0.1,
+                        friction=[1.0, 0.02, 0.0005], # sliding, torsion, rolling
+                        rgba=[0.9, 0.1, 0.1, 1.0],
+                        quat=[0.0, 0.0, 0.0, 1.0]):
+
+    # Add body, free joint, and new geom
+    body = spec.worldbody.add_body()
+    joint = body.add_freejoint()
+    geom = body.add_geom()
+
+    # Set some default params of geom, body, and joint
+    geom.group = 2
+    geom.contype = 1
+    geom.conaffinity = 1
+    geom.condim = 6
+    geom.priority = 2
+    geom.solimp = [0.95, 0.99, 0.001, 0.5, 2]
+    geom.solref = [0.005, 1]
+
+    # NOTE: remember that these properties exist, but we won't mess with them for now
+    # geom.pos = [0, 0, 0]
+    # geom.quat = [0, 0, 0, 1]
+    # geom.margin = 0
+    # geom.gap = 0
+    # NOTE: for free joint, won't have pos and axis, joint limits, or friction
+    joint.group = 2
+    joint.stiffness = 0
+    joint.damping = 0
+    joint.frictionloss = 0
+    joint.armature = 0
+
+    # TODO: check that inputs are valid?
+
+    # Set specificed params
+    geom.name = name
+    geom.rgba = rgba
+    geom.type = type
+    geom.size = size
+    # TODO: should friction be a default?
+    geom.friction = friction
+    body.name = name
+    body.mass = mass
+    # based on type, calculate inertias
+    # NOTE: can also set position and orientation of inertial frame
+    # body.ipos = [0, 0, 0]
+    # body.iquat = [0, 0, 0, 1]
+    if type==mujoco.mjtGeom.mjGEOM_SPHERE:
+        i = (2/5)*mass*(size[0]**2)
+        body.inertia = [i, i, i]
+    elif type==mujoco.mjtGeom.mjGEOM_CYLINDER:
+        i_xy = (1/4)*mass*size[0]**2 + 1/12*mass*size[1]**2
+        i_z = (1/2)*mass*size[0]**2
+        body.inertia = [i_xy, i_xy, i_z]
+    elif type==mujoco.mjtGeom.mjGEOM_BOX:
+        i_x = (1/12)*mass*((2*size[1])**2 + (2*size[2])**2)
+        i_y = (1/12)*mass*((2*size[0])**2 + (2*size[2])**2)
+        i_z = (1/12)*mass*((2*size[0])**2 + (2*size[1])**2)
+        body.inertia = [i_x, i_y, i_z]
+    else:
+        print("Not a valid type of object.")
+        # set inertias anyways?
+        body.inertia = [0.1, 0.1, 0,1]
+
+    # finally, set position and orientation of object
+    # TODO: should this be body pos?
+    body.pos = pos
+    body.quat = quat
+
+    # TODO: Append to keyframe?
+    # if len(spec.keys) != 0:
+    #     current_qpos = spec.keys[0].qpos.tolist()
+    #     obj_qpos = initial_pos + initial_quat
+    #     new_qpos = current_qpos + obj_qpos
+    #     spec.keys[0].qpos = new_qpos
+
+
+
+
+# function to load random objects in grid
+# function to load list/file of objects at specified positions, quats, masses, etc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ### YCB OBJECT STUFF ###
 def load_ycb_obj(spec: mujoco.MjSpec, obj_name, initial_pos=[0.0, 0.0, 1.0]):
     """
@@ -60,6 +199,8 @@ def load_ycb_obj(spec: mujoco.MjSpec, obj_name, initial_pos=[0.0, 0.0, 1.0]):
     geom.type = mujoco.mjtGeom.mjGEOM_MESH
     geom.meshname = obj_name
     geom.material = obj_name + "_material"
+
+    # TODO: should this be body pos?
     geom.pos = initial_pos
 
 

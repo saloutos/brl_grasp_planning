@@ -26,11 +26,17 @@ from utils import *
 glfw.init()
 
 # Load the MuJoCo model
+# TODO: make sure best MuJoCo options are set in this file?
 scene_path = os.path.join(get_base_path(), "scene", "scene_with_hand.xml")
 spec = mujoco.MjSpec.from_file(scene_path)
 
 # np.random.seed(0)
 load_random_grid_ycb(spec, 4)
+
+# TODO: add non-ycb objects here?
+# load_random_grid_primitives(spec, 4)
+# load_from_file_primitives(spec, file)
+
 
 model = spec.compile()
 data = mujoco.MjData(model)

@@ -3,8 +3,10 @@
 
   <include file="hands/franka_emika_panda/panda_only_hand.xml"/>
 
-  <!-- TODO: replace these with sweep parameters -->
-  <option cone="elliptic" impratio="10"/>
+  <!-- TODO: check that these are the correct sweep parameters -->
+  <option cone="elliptic" tolerance="1e-10" impratio="5" timestep="0.001" integrator="implicitfast" solver="Newton" noslip_iterations="0">
+    <flag contact="enable" override="disable" multiccd="disable"/>
+  </option>
 
   <statistic center="0 -0.1 0.2" extent="0.6" meansize="0.05"/>
 
