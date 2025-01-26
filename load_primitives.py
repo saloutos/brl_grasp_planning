@@ -27,7 +27,7 @@ glfw.init()
 
 # Load the MuJoCo model
 # TODO: make sure best MuJoCo options are set in this file?
-scene_path = os.path.join(get_base_path(), "scene", "scene_with_hand.xml")
+scene_path = os.path.join(get_base_path(), "scene", "scene.xml")
 spec = mujoco.MjSpec.from_file(scene_path)
 
 # np.random.seed(0)
@@ -94,17 +94,19 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         time.sleep(0.001)
         # update gripper pose and finger width
         sim_t = data.time
-        base_pos_des = np.array([0.0, 0.2, 0.8])
-        data.mocap_pos = base_pos_des
-        base_quat_des = np.zeros((4,))
-        mujoco.mju_mat2Quat(base_quat_des, np.eye(3).flatten())
-        data.mocap_quat = base_quat_des
-        data.ctrl[0] = 200 # not real units, goes from 0 to 255
+        # base_pos_des = np.array([0.0, 0.2, 0.8])
+        # data.mocap_pos = base_pos_des
+        # base_quat_des = np.zeros((4,))
+        # mujoco.mju_mat2Quat(base_quat_des, np.eye(3).flatten())
+        # data.mocap_quat = base_quat_des
+        # data.ctrl[0] = 200 # not real units, goes from 0 to 255
 
         if sim_i==2000:
             index = viewer.user_scn.ngeom
-            mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, [0,0,0], [0,0,2.0])
-            viewer.user_scn.geoms[index].rgba = np.array([1.0, 0.0, 0.0, 0.1])
+            # add line?
+            mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
+            mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 5, [1,1,0], [0,0,2.0])
+            viewer.user_scn.geoms[index].rgba = np.array([1.0, 0.0, 0.0, 0.9])
             viewer.user_scn.geoms[index].label = ''
             index+=1
             # update number of geoms and sync

@@ -15,8 +15,9 @@ def get_base_path():
 
 ### PRIMITIVE OBJECT STUFF ###
 
-# load random primitive objects (in grid?) (random orientations?)
+# load random primitive objects
 # TODO: could also randomly load from single object yaml files?
+# TODO: could also load in random positions and orientatons
 def load_random_grid_primitives(spec: mujoco.MjSpec, grid_side_length=4):
     total_length = 0.4
     obj_mass_range = [0.1, 1.0]
@@ -575,21 +576,25 @@ def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), rgba=[0.0, 1.0, 0.0, 0.1
         pts = np.dot(pts_homog, cam_pose.T)[:,:3]
 
         # line 1
+        mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
         mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[0,:], pts[1,:])
         viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 2
+        mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
         mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[2,:], pts[3,:])
         viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 3
+        mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
         mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[2,:], pts[5,:])
         viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 4
+        mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
         mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[5,:], pts[6,:])
         viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
