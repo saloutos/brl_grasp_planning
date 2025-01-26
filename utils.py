@@ -6,6 +6,8 @@ import open3d as o3d
 import cv2
 import matplotlib.pyplot as plt
 import mujoco.viewer
+import yaml
+from scipy.spatial.transform import Rotation
 
 # TODO: get rid of this function
 def get_base_path():
@@ -63,11 +65,40 @@ def load_random_grid_primitives(spec: mujoco.MjSpec, grid_side_length=4):
 
 # load objects from yaml description
 def load_objects_from_yaml(spec: mujoco.MjSpec, yaml_file_path):
-    # TODO: take yaml path or contents?
     # can define multiple objects per yaml, or load single object from many yamls? or both
-    a = 1
+    with open(yaml_file_path, 'r') as obj_file:
+        objects = yaml.safe_load(obj_file)
 
-
+    # for each object in yaml file, load it
+    for obj_name in objects.keys():
+        props = objects[obj_name]
+        if props['type']==0:
+            obj_type = mujoco.mjtGeom.mjGEOM_BOX
+        elif props['type']==1:
+            obj_type = mujoco.mjtGeom.mjGEOM_CYLINDER
+        elif props['type']==2:
+            obj_type = mujoco.mjtGeom.mjGEOM_SPHERE
+        # check orienation parameterization
+        if 'quat' in props.keys():
+            load_single_primitive(spec,
+                                obj_name,
+                                props['pos'],
+                                obj_type=obj_type,
+                                size=props['size'],
+                                mass=props['mass'],
+                                rgba=props['rgba'],
+                                quat=props['quat'])
+        elif 'rpy' in props.keys():
+            # Create a rotation object from Euler angles specifying axes of rotation
+            conv_quat = Rotation.from_euler('zyx', props['rpy'], degrees=True).as_quat()
+            load_single_primitive(spec,
+                    obj_name,
+                    props['pos'],
+                    obj_type=obj_type,
+                    size=props['size'],
+                    mass=props['mass'],
+                    rgba=props['rgba'],
+                    quat=conv_quat)
 
 
 # load primitive object with type, size, mass, friction, name, color, at pos, quat and attach to world spec

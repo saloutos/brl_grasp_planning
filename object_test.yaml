@@ -1,0 +1,24 @@
+box_1: # also serves as object name
+
+  type: 0 # 0 is box, 1 is cylinder, 2 is sphere
+  size: [0.1, 0.1, 0.1]
+  mass: 0.1
+  rgba: [0.9, 0.1, 0.1, 1.0]
+
+  friction: [1.0, 0.02, 0.0005]
+
+  pos: [0, 0, 0.2]
+  # quat: [0, 0, 0, 1]
+  rpy: [0, 0, 45] # in degrees
+
+sphere_1:
+
+  type: 2 # 0 is box, 1 is cylinder, 2 is sphere
+  size: [0.05, 0.1, 0.1]
+  mass: 0.1
+  rgba: [0.9, 0.1, 0.1, 1.0]
+
+  friction: [1.0, 0.02, 0.0005]
+
+  pos: [0.2, 0.2, 0.2]
+  quat: [0, 0, 0, 1]

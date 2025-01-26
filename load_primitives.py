@@ -37,9 +37,12 @@ spec = mujoco.MjSpec.from_file(scene_path)
 #                     size=[0.05, 0, 0],
 #                     mass=0.5,
 #                     rgba=[0.1, 0.9, 0.1, 1.0])
-load_random_grid_primitives(spec, 4)
+# load_random_grid_primitives(spec, 4)
 # load_from_file_primitives(spec, file)
 
+# can load 2 yamls, but must check that names are unique
+load_objects_from_yaml(spec, 'object_test.yaml')
+load_objects_from_yaml(spec, 'object_test_2.yaml')
 
 model = spec.compile()
 data = mujoco.MjData(model)
@@ -183,7 +186,6 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         #     break
 
         sim_i += 1
-        print(sim_i)
 
 
 # Clean up OpenCV and GLFW
