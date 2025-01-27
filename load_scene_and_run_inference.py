@@ -33,7 +33,7 @@ spec = mujoco.MjSpec.from_file(scene_path)
 # np.random.seed(0)
 # CHOOSE TO LOAD YCB MESHES OR RANDOM PRIMITIVES?
 # load_random_grid_ycb(spec, 4)
-load_random_grid_primitives(spec, 4)
+load_random_grid_fixed_primitives(spec, 4)
 # load_objects_from_yaml(spec, 'object_test.yaml')
 
 model = spec.compile()

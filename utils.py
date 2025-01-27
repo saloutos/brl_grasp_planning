@@ -16,11 +16,54 @@ def get_base_path():
     return base_dir_path
 
 ### PRIMITIVE OBJECT STUFF ###
+def load_random_grid_fixed_primitives(spec: mujoco.MjSpec, grid_side_length=4):
+    total_length = 0.4
+
+    edge = np.linspace(-total_length / 2, total_length / 2, grid_side_length)
+    coordinate_grid_x, coordinate_grid_y = np.meshgrid(edge, edge)
+    coordinate_grid_x = coordinate_grid_x.flatten()
+    coordinate_grid_y = coordinate_grid_y.flatten()
+
+    obj_path = os.path.join(get_base_path(), "primitives/single_objects/fixed")
+    fnames = os.listdir(obj_path)
+
+    selected_objects = np.random.choice(fnames, grid_side_length ** 2, replace=False)
+
+    for i in range(len(coordinate_grid_x)):
+        xi = coordinate_grid_x[i]
+        yi = coordinate_grid_y[i]
+        obj_to_load = selected_objects[i]
+        initial_pos=[xi, yi, 0.2 + np.random.rand() * 0.1]
+
+        with open('primitives/single_objects/fixed/'+obj_to_load, 'r') as file:
+            data = yaml.load(file, Loader=yaml.FullLoader)
+        obj_name = list(data.keys())[0]
+        # get primitive type
+        if data[obj_name]['type']==0:
+            obj_type = mujoco.mjtGeom.mjGEOM_BOX
+        elif data[obj_name]['type']==1:
+            obj_type = mujoco.mjtGeom.mjGEOM_CYLINDER
+        elif data[obj_name]['type']==2:
+            obj_type = mujoco.mjtGeom.mjGEOM_SPHERE
+        data[obj_name]['pos'] = initial_pos
+        # TODO: could also change orientation
+        # load object into mujoco scene
+        conv_quat = Rotation.from_euler('zyx', data[obj_name]['rpy'], degrees=True).as_quat()
+        load_single_primitive(spec,
+                            obj_name,
+                            data[obj_name]['pos'],
+                            obj_type=obj_type,
+                            size=data[obj_name]['size'],
+                            mass=data[obj_name]['mass'],
+                            rgba=data[obj_name]['rgba'],
+                            quat=conv_quat)
+
+
 
 # load random primitive objects
 # TODO: could also randomly load from single object yaml files?
 # TODO: could also load in random positions and orientatons
-def load_random_grid_primitives(spec: mujoco.MjSpec, grid_side_length=4):
+def generate_random_grid_primitives(spec: mujoco.MjSpec, grid_side_length=4):
     total_length = 0.4
     obj_mass_range = [0.1, 1.0]
     obj_size_0_range = [0.02, 0.04] # radius or cube side, nominal is 0.03
