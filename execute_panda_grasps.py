@@ -33,7 +33,9 @@ mj_model = spec.compile()
 PandaGP = PandaGripperPlatform(mj_model, viewer_enable=True, log_path=None)
 
 # controller
-from controllers.single_object_panda.PandaGrabLiftFSM import PandaGrabLiftFSM
+# from controllers.single_object_panda.PandaGrabLiftFSM import PandaGrabLiftFSM
+# controller = PandaGrabLiftFSM()
+from controllers.execute_plan_panda.PandaGrabLiftFSM import PandaGrabLiftFSM
 controller = PandaGrabLiftFSM()
 
 # add variables to GP
