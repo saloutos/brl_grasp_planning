@@ -8,8 +8,8 @@ import mujoco.viewer
 from utils import *
 
 # some setup
-num_scenes = 3 # generate this many scenes
-fnames = os.listdir('primitives/single_objects') # get list of all individual primitives
+num_scenes = 1 # generate this many scenes
+fnames = os.listdir('primitives/single_objects/fixed') # get list of all individual primitives
 scene_path = os.path.join(get_base_path(), "scene", "scene.xml")
 
 for i in range(num_scenes): # TODO: this needs to wrap entire thing!!
@@ -30,7 +30,7 @@ for i in range(num_scenes): # TODO: this needs to wrap entire thing!!
 
     # for each object, load it into the scene
     for j, obj in enumerate(chosen_objects):
-        with open('primitives/single_objects/'+obj, 'r') as file:
+        with open('primitives/single_objects/fixed/'+obj, 'r') as file:
             data = yaml.load(file, Loader=yaml.FullLoader)
             obj_name = list(data.keys())[0]
         # get primitive type
@@ -43,7 +43,7 @@ for i in range(num_scenes): # TODO: this needs to wrap entire thing!!
         # what to do with position and orientation????
         new_x = np.random.uniform(-0.1, 0.1)
         new_y = np.random.uniform(-0.1, 0.1)
-        new_z = np.random.uniform(0.2, 0.4) + 0.05*j
+        new_z = 0.1*(j+1)
         new_roll = np.random.uniform(-180, 180)
         new_pitch = np.random.uniform(-180, 180)
         new_yaw = np.random.uniform(-180, 180)
@@ -67,6 +67,9 @@ for i in range(num_scenes): # TODO: this needs to wrap entire thing!!
 
 
     # simulate until objects reach a steady state
+    # to limit velocities, turn down gravity
+    spec.option.gravity = np.array([0, 0, -0.01])
+
     model = spec.compile()
     data = mujoco.MjData(model)
     # init mujoco viewer
@@ -74,13 +77,12 @@ for i in range(num_scenes): # TODO: this needs to wrap entire thing!!
         sim_i = 0
         mujoco.mj_step(model, data)
         while viewer.is_running():
-            pass
             # step simulation
-            # mujoco.mj_step(model, data)
-            # time.sleep(0.001)
-            # sim_t = data.time
-            # sim_i += 1
-            # viewer.sync()
+            mujoco.mj_step(model, data)
+            time.sleep(0.001)
+            sim_t = data.time
+            sim_i += 1
+            viewer.sync()
 
             # check if objects are stable?
 

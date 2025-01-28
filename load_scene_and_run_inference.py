@@ -80,7 +80,7 @@ n_frame_geoms = 0
 cam_vis_idx = None
 
 # init mujoco viewer
-with mujoco.viewer.launch_passive(model, data) as viewer:
+with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui=False) as viewer:
 
     # Step the simulation several times
     mujoco.mj_step(model, data)

@@ -107,7 +107,7 @@ def generate_random_grid_primitives(spec: mujoco.MjSpec, grid_side_length=4):
 
 
 # load objects from yaml description
-def load_objects_from_yaml(spec: mujoco.MjSpec, yaml_file_path):
+def load_objects_from_yaml(spec: mujoco.MjSpec, yaml_file_path, pos=None, quat=None, rpy=None):
     # can define multiple objects per yaml, or load single object from many yamls? or both
     with open(yaml_file_path, 'r') as obj_file:
         objects = yaml.safe_load(obj_file)
@@ -121,7 +121,14 @@ def load_objects_from_yaml(spec: mujoco.MjSpec, yaml_file_path):
             obj_type = mujoco.mjtGeom.mjGEOM_CYLINDER
         elif props['type']==2:
             obj_type = mujoco.mjtGeom.mjGEOM_SPHERE
-        # check orienation parameterization
+        if pos is not None:
+            props['pos'] = pos
+        if quat is not None:
+            props['quat'] = quat
+        if rpy is not None:
+            props['rpy'] = rpy
+        # check orientation parameterization
+        # TODO: switch order to prefer RPY orientation?
         if 'quat' in props.keys():
             load_single_primitive(spec,
                                 obj_name,

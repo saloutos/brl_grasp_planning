@@ -65,10 +65,3 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
 
     # update positions and orientations in scene dict and save to scene yaml
 
-
-
-
-
-
-
-
