@@ -1,6 +1,7 @@
 # imports
 from controllers.base.FiniteStateMachine import *
 from .states.reset import *
+from .states.waiting import *
 from .states.planning import *
 from .states.move_to_approach import *
 from .states.move_to_pregrasp import *
@@ -13,6 +14,7 @@ from .states.release_object import *
 class PandaGrabLiftFSM(FiniteStateMachine):
     def __init__(self, states=[]):
         states = [Reset(),
+                Waiting(),
                 Planning(),
                 MoveToApproach(),
                 MoveToPreGrasp(),

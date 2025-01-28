@@ -27,14 +27,16 @@ glfw.init()
 
 # Load the MuJoCo model
 # TODO: make sure best MuJoCo options are set in this file?
-scene_path = os.path.join(get_base_path(), "scene", "scene_with_hand.xml")
+scene_path = os.path.join(get_base_path(), "scene", "scene_with_panda_hand.xml")
 spec = mujoco.MjSpec.from_file(scene_path)
 
 # np.random.seed(0)
 # CHOOSE TO LOAD YCB MESHES OR RANDOM PRIMITIVES?
 # load_random_grid_ycb(spec, 4)
-load_random_grid_fixed_primitives(spec, 4)
+# load_random_grid_fixed_primitives(spec, 4)
 # load_objects_from_yaml(spec, 'object_test.yaml')
+# single object to grasp
+load_objects_from_yaml(spec, "primitives/single_objects/fixed/cylinder_1.yaml", pos=[0,0,0.05], rpy=[0,0,0])
 
 model = spec.compile()
 data = mujoco.MjData(model)
@@ -157,8 +159,7 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     # # Show depth image
     # depth_array_colored = get_depth_display(depth_array_clipped)
     # cv2.imshow("Depth Map", depth_array_colored)
-    # Show point cloud
-    # o3d.visualization.draw_geometries([pcd_world])
+    
 
     ### CONTACT GRASPNET ###
     print('')

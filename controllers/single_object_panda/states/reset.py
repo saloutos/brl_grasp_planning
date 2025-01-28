@@ -25,9 +25,7 @@ class Reset(BaseState):
 
         # TODO: update mj_model settings based on number of cycles here?
 
-        # TODO: directly set finger positions
-        # GP.mj_data.qpos[7:16] = fsm_params.q_des_default
-        # GP.mj_data.qvel[7:16] = np.zeros((9,))
+        # TODO: reset using keyframe of model?
 
         # set new "control" value
         GP.gr_data.set_ctrl(GP.gr_data.all_idxs, fsm_params.ctrl_open)

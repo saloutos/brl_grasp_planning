@@ -615,7 +615,7 @@ def draw_grasps(vis, grasps, cam_pose, gripper_openings, colors=[(0, 1., 0)]):
     line_set.colors = o3d.utility.Vector3dVector(colors)
     vis.add_geometry(line_set)
 
-def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), rgba=[0.0, 1.0, 0.0, 0.1]):
+def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), rgba=[0.0, 1.0, 0.0, 0.1], scores=None, linewidth=2):
     # TODO: add gripper openings, multiple colors back in?
     """
     Draws wireframe grasps from given camera pose and with given gripper openings
@@ -644,6 +644,19 @@ def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), rgba=[0.0, 1.0, 0.0, 0.1
     grasp_line_plot = np.array([np.zeros((3,)), mid_point, gripper_control_points[1], gripper_control_points[3],
                                 gripper_control_points[1], gripper_control_points[2], gripper_control_points[4]])
 
+    cm = plt.get_cmap('viridis')
+    if scores is not None:
+        colors = np.zeros((len(grasps), 4))
+        max_score = np.max(scores)
+        max_ind = np.argmax(scores)
+        min_score = np.min(scores)
+        for i, score in enumerate(scores):
+            colors[i,0:3] = cm((score - min_score) / (max_score - min_score))[:3]
+            colors[i,3] = 0.2
+            if i == max_ind:
+                colors[i,:] = np.array([1, 0, 0, 1])
+
+
     index = viewer.user_scn.ngeom
     # for i, (g,g_opening) in enumerate(zip(grasps, gripper_openings)):
     for i, g in enumerate(grasps):
@@ -658,26 +671,38 @@ def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), rgba=[0.0, 1.0, 0.0, 0.1
 
         # line 1
         mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
-        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[0,:], pts[1,:])
-        viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, linewidth, pts[0,:], pts[1,:])
+        if scores is not None:
+            viewer.user_scn.geoms[index].rgba = colors[i]
+        else:
+            viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 2
         mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
-        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[2,:], pts[3,:])
-        viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, linewidth, pts[2,:], pts[3,:])
+        if scores is not None:
+            viewer.user_scn.geoms[index].rgba = colors[i]
+        else:
+            viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 3
         mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
-        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[2,:], pts[5,:])
-        viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, linewidth, pts[2,:], pts[5,:])
+        if scores is not None:
+            viewer.user_scn.geoms[index].rgba = colors[i]
+        else:
+            viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 4
         mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
-        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, 2, pts[5,:], pts[6,:])
-        viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, linewidth, pts[5,:], pts[6,:])
+        if scores is not None:
+            viewer.user_scn.geoms[index].rgba = colors[i]
+        else:
+            viewer.user_scn.geoms[index].rgba = np.array(rgba)
         viewer.user_scn.geoms[index].label = ''
         index+=1
 

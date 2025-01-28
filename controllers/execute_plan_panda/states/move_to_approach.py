@@ -33,9 +33,9 @@ class MoveToApproach(BaseState):
         # set wrist cartesian position
         # TODO: move from default to approach pose, then from approach pose to grasp pose here?
         ratio = (cur_time - self.start_time)/fsm_params.times['approach']
-        GP.gr_data.kinematics['base_des']['p'] = ratio*fsm_params.base_pos_approach + (1-ratio)*fsm_params.base_pos_default
+        GP.gr_data.kinematics['base_des']['p'] = ratio*GP.planned_poses['approach_pose'][:3,3] + (1-ratio)*fsm_params.base_pos_default
         # TODO: interpolate rotations?
-        GP.gr_data.kinematics['base_des']['R'] = fsm_params.base_R_approach #ratio*fsm_params.base_R_default + (1-ratio)*fsm_params.base_R_default
+        GP.gr_data.kinematics['base_des']['R'] = GP.planned_poses['approach_pose'][:3,:3]  #ratio*fsm_params.base_R_default + (1-ratio)*fsm_params.base_R_default
 
         # state transition to holding object
         if (cur_time-self.start_time) > fsm_params.times['approach']:

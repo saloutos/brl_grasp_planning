@@ -47,6 +47,6 @@ class Reset(BaseState):
         GP.mj_data.qpos[12:16] = obj_quat_default
 
         # go to waiting state after reset
-        next_state = "Planning"
+        next_state = "Waiting"
 
         return next_state

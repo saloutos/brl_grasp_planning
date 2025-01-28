@@ -9,6 +9,8 @@ from datetime import datetime as dt
 import select
 import os
 from enum import Enum
+import copy
+import open3d as o3d
 
 import mujoco as mj
 import mujoco.viewer as mjv
@@ -114,6 +116,46 @@ class PandaGripperPlatform:
         # save log start time
         if self.log_enable:
             self.log_start = self.time()
+
+    def initialize_rendering(self):
+        # set up camera stuff for planning here
+
+        # TODO: add an "enable rendering" flag here?
+
+        # Get the camera ID for 'overhead_cam'
+        self.cam_name = "overhead_cam"
+        self.cam_id = mj.mj_name2id(self.mj_model, mj.mjtObj.mjOBJ_CAMERA, self.cam_name)
+
+        # set up camera intrinsics
+        self.cam_fovy = np.deg2rad(self.mj_model.cam_fovy[self.cam_id])
+        self.cam_width = 640
+        self.cam_height = 480
+        cam_cx = self.cam_width/2
+        cam_cy = self.cam_height/2
+        cam_f = self.cam_height / (2 * math.tan(self.cam_fovy / 2))
+        self.cam_K = np.array([[cam_f, 0.0, cam_cx], [0.0, cam_f, cam_cy], [0.0, 0.0, 1.0]])
+        # k_d405_640x480 = CameraIntrinsic(cam_width, cam_height, cam_f, cam_f, cam_cx, cam_cy)
+
+        # Setup MuJoCo rendering context
+        self.gl_context = mj.GLContext(self.cam_width, self.cam_height)
+        self.gl_context.make_current()
+        self.renderer = mj.MjrContext(self.mj_model, mj.mjtFontScale.mjFONTSCALE_150)
+
+        # Get z-buffer properties
+        # https://github.com/google-deepmind/dm_control/blob/main/dm_control/mujoco/engine.py#L817
+        z_extent = self.mj_model.stat.extent
+        self.z_near = self.mj_model.vis.map.znear * z_extent # 0.005
+        self.z_far = self.mj_model.vis.map.zfar * z_extent # 30
+
+        # Define the camera parameters (you can modify these based on your need)
+        # https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-camera
+        self.cam = mj.MjvCamera()
+        self.cam.fixedcamid = self.cam_id  # Use the camera ID obtained earlier
+        self.cam.type = mj.mjtCamera.mjCAMERA_FIXED  # Fixed camera
+
+        # Prepare to render
+        self.scene = mj.MjvScene(self.mj_model, maxgeom=20000)
+        self.viewport = mj.MjrRect(0, 0, self.cam_width, self.cam_height)
 
     def shutdown(self):
         # close viewer
@@ -254,3 +296,71 @@ class PandaGripperPlatform:
         # update actuator commands based on gr_data tau_command, will be applied during next mj_step call
         # TODO: update this
         self.mj_data.ctrl = self.gr_data.get_ctrl(self.gr_data.all_idxs)
+
+    def capture_scene(self):
+
+        # TODO: check an "enable rendering" flag here?
+        self.gl_context.make_current()
+
+        self.mj_viewer.user_scn.ngeom = 0
+        self.mj_viewer.sync()
+
+        # update camera stuff
+        mj.mjv_updateScene(self.mj_model, self.mj_data, mj.MjvOption(), None, self.cam, mj.mjtCatBit.mjCAT_ALL, self.scene)
+
+        # Render the scene to an offscreen buffer
+        mj.mjr_render(self.viewport, self.scene, self.renderer)
+
+        # Read pixels from the OpenGL buffer (MuJoCo renders in RGB format)
+        rgb_array = np.zeros((self.cam_height, self.cam_width, 3), dtype=np.uint8)  # Image size: height=480, width=640
+        depth_array = np.zeros((self.cam_height, self.cam_width), dtype=np.float32)  # Depth array
+        mj.mjr_readPixels(rgb_array, depth_array, self.viewport, self.renderer)
+
+        # Flip the image vertically (because OpenGL origin is bottom-left)
+        rgb_array = np.flipud(rgb_array)
+        depth_array = np.flipud(depth_array)
+
+        # convert from raw depth to metric depth
+        # depth_array = raw_to_metric_depth(depth_array, self.z_near, self.z_far)
+        depth_array = self.z_near / (1 - depth_array * (1 - self.z_near / self.z_far))
+
+        # --- Process image --- #
+        cam_xpos = self.mj_data.cam_xpos[self.cam_id]
+        cam_xmat = self.mj_data.cam_xmat[self.cam_id]
+        cam_extrinsics = np.eye(4)
+        cam_extrinsics[:3, :3] = cam_xmat.reshape(3, 3)
+        cam_extrinsics[:3, 3] = cam_xpos
+        # -z --> +z
+        # -y --> +y
+        # +x --> +x
+        T_camzforward_cam = np.array([[1, 0, 0, 0],
+                                    [0, -1, 0, 0],
+                                    [0, 0, -1, 0],
+                                    [0, 0, 0, 1]])
+        cam_extrinsics = cam_extrinsics @ T_camzforward_cam
+
+        # get point cloud
+        mask = np.where((depth_array > 0.0) & (depth_array < 2.0))
+        x,y = mask[1], mask[0]
+        pc_rgb = rgb_array[y,x,:]
+        normalized_x = (x.astype(np.float32) - self.cam_K[0,2])
+        normalized_y = (y.astype(np.float32) - self.cam_K[1,2])
+        world_x = normalized_x * depth_array[y, x] / self.cam_K[0,0]
+        world_y = normalized_y * depth_array[y, x] / self.cam_K[1,1]
+        world_z = depth_array[y, x]
+        pc_xyz = np.vstack((world_x, world_y, world_z)).T
+
+        pcd_cam = o3d.geometry.PointCloud()
+        pcd_cam.points = o3d.utility.Vector3dVector(pc_xyz)
+        if rgb_array is not None:
+            pcd_cam.colors = o3d.utility.Vector3dVector(pc_rgb / 255.0)
+
+        # convert PC to world frame
+        pcd_world = copy.deepcopy(pcd_cam).transform(cam_extrinsics)
+        # crop PC based on bounding box in world frame
+        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.225]), np.eye(3), np.array([1.2, 0.8, 0.4]))
+        pcd_world_crop = pcd_world.crop(workspace_bb)
+        # get cropped point cloud in camera frame as well
+        pcd_cam_crop = copy.deepcopy(pcd_world_crop).transform(np.linalg.inv(cam_extrinsics))
+
+        return pcd_cam_crop, pcd_world_crop, cam_extrinsics # could also return rgb_array, depth_array

@@ -15,6 +15,8 @@ class Planning(BaseState):
         self.enabled = 1
         # get initial time
         self.start_time = GP.time()
+        # set flag to indicate that controller is ready for a plan
+        GP.ready_to_plan = True
 
     def exit(self, GP):
         self.enabled = 0
@@ -37,17 +39,10 @@ class Planning(BaseState):
         # TODO: add planning code here!
         # and then make state transition dependent on planning code output
 
-        # declare grasp pose and approach pose?
-        # TODO: not sure if this is the best way to do this?
-        # wrist pose for approach
-        fsm_params.base_pos_approach = np.array([0.0, -0.2, 0.04]) #np.array([0.0, 0.0, 0.05])
-        fsm_params.base_R_approach = np.eye(3)
-        # wrist pose for grasp
-        fsm_params.base_pos_grasp = np.array([0.0, -0.1, 0.04]) #np.array([0.0, 0.0, 0.05])
-        fsm_params.base_R_grasp = np.eye(3)
-
         # state transition to execute grasp
-        if (cur_time-self.start_time) > fsm_params.times['plan']:
+        # wait for complete plan, and some minimum time
+        if GP.plan_complete and ((cur_time-self.start_time) > fsm_params.times['plan']):
+            GP.plan_complete = False
             next_state = "MoveToApproach"
 
         # check for manual state transition to grasp or reset
