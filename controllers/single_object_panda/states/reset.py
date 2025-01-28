@@ -39,11 +39,12 @@ class Reset(BaseState):
         GP.mj_data.mocap_quat = base_quat_default
 
         # TODO: directly set object position?
-
-        # GP.mj_data.qpos[16:19] = fsm_params.obj_pos_default
-        # obj_quat_default = np.zeros((4,))
-        # mj.mju_mat2Quat(obj_quat_default, fsm_params.obj_R_default.flatten())
-        # GP.mj_data.qpos[19:23] = obj_quat_default
+        # now, it goes 7 for wrist pose, 2 for finger joints, 7 for object pose
+        # object pos is 9,10,11, and object quat is 12,13,14,15
+        GP.mj_data.qpos[9:12] = fsm_params.obj_pos_default
+        obj_quat_default = np.zeros((4,))
+        mj.mju_mat2Quat(obj_quat_default, fsm_params.obj_R_default.flatten())
+        GP.mj_data.qpos[12:16] = obj_quat_default
 
         # go to waiting state after reset
         next_state = "Waiting"

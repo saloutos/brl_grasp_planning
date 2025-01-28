@@ -21,7 +21,7 @@ fsm_params.base_pos_hold = np.array([0.0, -0.1, 0.2]) #np.array([0.0, 0.0, 0.25]
 fsm_params.base_R_hold = np.eye(3)
 
 # object pose default??
-fsm_params.obj_pos_default = np.array([0.22, 0.0, 0.031])
+fsm_params.obj_pos_default = np.array([0.0, 0.0, 0.05])
 fsm_params.obj_R_default = np.eye(3)
 
 # dict of trajectory times for each state
