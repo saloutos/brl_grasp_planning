@@ -15,10 +15,15 @@ fsm_params.ctrl_grasp = np.array([10])
 
 # wrist pose default
 fsm_params.base_pos_default = np.array([0.0, -0.1, 0.04]) #np.array([0.0, 0.0, 0.05])
-fsm_params.base_R_default = np.eye(3)
+fsm_params.base_R_default = np.array([[1.0, 0.0, 0.0],
+                                    [0.0, 0.0, 1.0],
+                                    [0.0, -1.0, 0.0]])
+
 # wrist pose for holding
 fsm_params.base_pos_hold = np.array([0.0, -0.1, 0.2]) #np.array([0.0, 0.0, 0.25])
-fsm_params.base_R_hold = np.eye(3)
+fsm_params.base_R_hold = np.array([[1.0, 0.0, 0.0],
+                                    [0.0, 0.0, 1.0],
+                                    [0.0, -1.0, 0.0]])
 
 # object pose default??
 fsm_params.obj_pos_default = np.array([0.0, 0.0, 0.05])
