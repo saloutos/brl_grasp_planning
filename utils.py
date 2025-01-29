@@ -190,34 +190,14 @@ def load_single_primitive(spec: mujoco.MjSpec,
     # TODO: check that inputs are valid?
 
     # Set specificed params
+    body.name = name
     geom.name = name
     geom.rgba = rgba
     geom.type = obj_type
     geom.size = size
+    geom.mass = mass
     # TODO: should friction be a default?
     geom.friction = friction
-    body.name = name
-    body.mass = mass
-    # based on type, calculate inertias
-    # NOTE: can also set position and orientation of inertial frame
-    # body.ipos = [0, 0, 0]
-    # body.iquat = [0, 0, 0, 1]
-    if obj_type==mujoco.mjtGeom.mjGEOM_SPHERE:
-        i = (2/5)*mass*(size[0]**2)
-        body.inertia = [i, i, i]
-    elif obj_type==mujoco.mjtGeom.mjGEOM_CYLINDER:
-        i_xy = (1/4)*mass*size[0]**2 + 1/12*mass*size[1]**2
-        i_z = (1/2)*mass*size[0]**2
-        body.inertia = [i_xy, i_xy, i_z]
-    elif obj_type==mujoco.mjtGeom.mjGEOM_BOX:
-        i_x = (1/12)*mass*((2*size[1])**2 + (2*size[2])**2)
-        i_y = (1/12)*mass*((2*size[0])**2 + (2*size[2])**2)
-        i_z = (1/12)*mass*((2*size[0])**2 + (2*size[1])**2)
-        body.inertia = [i_x, i_y, i_z]
-    else:
-        print("Not a valid type of object.")
-        # set inertias anyways?
-        body.inertia = [0.1, 0.1, 0,1]
 
     # finally, set position and orientation of object
     # TODO: should this be body pos?

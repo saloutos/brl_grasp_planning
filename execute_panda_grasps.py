@@ -35,10 +35,10 @@ scene_path = os.path.join(get_base_path(), "scene", "scene_with_panda_hand.xml")
 spec = mj.MjSpec.from_file(scene_path)
 
 # load a bunch of objects?
-load_random_grid_fixed_primitives(spec, 4)
+# load_random_grid_fixed_primitives(spec, 4)
 
 # single object to grasp
-# load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_6.yaml", pos=[0,0,0.05], rpy=[0,0,0])
+load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_7.yaml", pos=[0,0,0.08], rpy=[0,0,30])
 
 mj_model = spec.compile()
 
@@ -52,21 +52,25 @@ from controllers.execute_plan_panda.PandaGrabLiftFSM import PandaGrabLiftFSM
 controller = PandaGrabLiftFSM()
 
 # planner(s)
+
 # Contact Grasp Net
 with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
     cgn_config = yaml.safe_load(f)
 cgn_config['OPTIMIZER']['batch_size'] = int(1)
 cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
 CGN = ContactGraspNet(cgn_config)
-# # Edge Grasp
+
+# Edge Grasp
 # with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
 #     edge_grasp_config = yaml.safe_load(f)
 # EDGE = EdgeGraspNet(edge_grasp_config)
-# # GS Net
+
+# GS Net
 # with open('planners/graspness/graspness_config.yaml', 'r') as f:
 #     graspness_config = yaml.safe_load(f)
 # GSN = GraspnessNet(graspness_config)
-# # GIGA
+
+# GIGA
 # with open('planners/giga/giga_config.yaml', 'r') as f:
 #     giga_config = yaml.safe_load(f)
 # GIGA = GIGANet(giga_config)
@@ -124,14 +128,14 @@ try:
 
                 # run planning
                 plan_start = time.time()
-                # TODO: remove some of these inputs? probably don't need them
-                # TODO: stop returning dicts for each, just return the final grasp poses
-                grasp_poses_world, grasp_scores, grasp_widths = CGN.predict_scene_grasps(pcd_cam, cam_extrinsics)
 
+                ### TODO: choose planner here!!!
+                grasp_poses_world, grasp_scores, grasp_widths = CGN.predict_scene_grasps(pcd_cam, cam_extrinsics)
                 # grasp_poses_world, grasp_scores, grasp_widths = EDGE.predict_scene_grasps(pcd_world)
-                # grasp_poses_cam, grasp_scores, grasp_widths = GSN.predict_scene_grasps(pcd_cam)
-                # TODO: pull this out of the capture scene function!
+                # grasp_poses_world, grasp_scores, grasp_widths = GSN.predict_scene_grasps(pcd_cam, cam_extrinsics)
+                # TODO: pull these out of the capture scene function too
                 # grasp_poses_world, grasp_scores, grasp_widths = GIGA.predict_scene_grasps(depth_array, k_d405_640x480, cam_extrinsics)
+
                 plan_time = time.time() - plan_start
 
                 # # put grasps in world frame
@@ -173,6 +177,8 @@ try:
                 #                 window_name = 'ContactGraspNet',
                 #                 plot_origin=True,
                 #                 gripper_openings=None)
+
+                print("Planning completed in {:.2f} seconds.".format(plan_time))
 
                 PandaGP.plan_complete = True
 
