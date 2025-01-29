@@ -65,4 +65,8 @@
     <geom name="overhead_cam_geom" class="camera" pos="0 -0.4 0.8" quat="0 0 0.976296 0.21644" mesh="d405_solid"/>
   </worldbody>
 
+  <keyframe>
+    <key name="home"/>
+  </keyframe>
+
 </mujoco>

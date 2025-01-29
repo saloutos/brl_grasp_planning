@@ -38,7 +38,7 @@ spec = mj.MjSpec.from_file(scene_path)
 # load_random_grid_fixed_primitives(spec, 4)
 
 # single object to grasp
-load_objects_from_yaml(spec, "primitives/single_objects/fixed/cylinder_1.yaml", pos=[0,0,0.05], rpy=[0,0,0])
+load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_6.yaml", pos=[0,0,0.05], rpy=[0,0,0])
 
 mj_model = spec.compile()
 
@@ -112,6 +112,7 @@ try:
                 PandaGP.run_viewer_sync = False
                 PandaGP.sync_viewer()
                 PandaGP.dt_comp += PandaGP.time() - viewer_sync_start_time
+
             # check for planning flag
             if PandaGP.ready_to_plan:
                 PandaGP.ready_to_plan = False
@@ -119,6 +120,7 @@ try:
                 # capture image of scene and create point cloud
                 pcd_cam, pcd_world, cam_extrinsics = PandaGP.capture_scene()
                 # print(pcd_world)
+                # o3d.visualization.draw_geometries([pcd_world])
 
                 # run planning
                 plan_start = time.time()
@@ -142,8 +144,8 @@ try:
                 grasp_poses_world = {-1: grasp_poses_world_array}
 
                 best_grasp = np.argmax(scores[-1])
-                best_score = scores[-1][best_grasp]
-                best_width = widths[-1][best_grasp]
+                # best_score = scores[-1][best_grasp]
+                # best_width = widths[-1][best_grasp]
                 best_pose = grasp_poses_world_array[best_grasp,:,:]
 
                 # can print info about best grasp
@@ -155,9 +157,13 @@ try:
                 # save grasp pose
                 # TODO: save any other information?
                 PandaGP.planned_poses['grasp_pose'] = copy.deepcopy(best_pose)
+
                 # or set fixed pose here
-                # PandaGP.planned_poses['grasp_pose'] = np.eye(4)
-                # PandaGP.planned_poses['grasp_pose'][:3,3] = np.array([0.0, -0.1, 0.04])
+                PandaGP.planned_poses['grasp_pose'] = np.eye(4)
+                PandaGP.planned_poses['grasp_pose'][:3,:3] = np.array([[1.0, 0.0, 0.0],
+                                                                    [0.0, 0.0, 1.0],
+                                                                    [0.0, -1.0, 0.0]])
+                PandaGP.planned_poses['grasp_pose'][:3,3] = np.array([0.0, -0.1, 0.06])
 
                 # finally, visualize the grasps
                 # TODO: add a grasp at approach pose too?
@@ -166,7 +172,7 @@ try:
                 mjv_draw_grasps(PandaGP.mj_viewer, grasp_poses_world[-1], scores=scores[-1], linewidth=3)
                 # mjv_draw_grasps(PandaGP.mj_viewer, grasp_poses_world[-1], rgba=[new_rgb[0], new_rgb[1], new_rgb[2], 0.25])
 
-                # # visualize grasps in separate window
+                # visualize grasps in separate window
                 # visualize_grasps(pcd_world, grasp_poses_world, scores,
                 #                 window_name = 'ContactGraspNet',
                 #                 plot_origin=True,

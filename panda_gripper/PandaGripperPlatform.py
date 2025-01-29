@@ -88,9 +88,9 @@ class PandaGripperPlatform:
                 self.mj_viewer.opt.frame = mj.mjtFrame.mjFRAME_WORLD
                 # can also tweak visualization elements here
                 # TODO
-                self.mj_viewer.cam.distance = 1.2
-                self.mj_viewer.cam.elevation = -15
-                self.mj_viewer.cam.azimuth = 120
+                self.mj_viewer.cam.distance = 2.0
+                self.mj_viewer.cam.elevation = -20
+                self.mj_viewer.cam.azimuth = 135
                 self.mj_viewer.cam.lookat = np.array([-0.1, 0.1, 0.15])
                 if self.mode==PlatformMode.SIM_WITH_VIS:
                     self.mj_viewer.opt.flags[mj.mjtVisFlag.mjVIS_CONTACTPOINT] = True

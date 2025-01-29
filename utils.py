@@ -59,7 +59,6 @@ def load_random_grid_fixed_primitives(spec: mujoco.MjSpec, grid_side_length=4):
                             quat=conv_quat)
 
 
-
 # load random primitive objects
 # TODO: could also randomly load from single object yaml files?
 # TODO: could also load in random positions and orientatons
@@ -225,12 +224,14 @@ def load_single_primitive(spec: mujoco.MjSpec,
     body.pos = pos
     body.quat = quat
 
-    # TODO: Append to keyframe?
-    # if len(spec.keys) != 0:
-    #     current_qpos = spec.keys[0].qpos.tolist()
-    #     obj_qpos = initial_pos + initial_quat
-    #     new_qpos = current_qpos + obj_qpos
-    #     spec.keys[0].qpos = new_qpos
+    # Append to keyframe
+    # NOTE: assumes just one keyframe for now
+    if len(spec.keys) != 0:
+        print("adding key frame")
+        current_qpos = spec.keys[0].qpos.tolist()
+        obj_qpos = list(pos) + list(quat)
+        new_qpos = current_qpos + obj_qpos
+        spec.keys[0].qpos = new_qpos
 
 
 ### YCB OBJECT STUFF ###
@@ -283,13 +284,12 @@ def load_ycb_obj(spec: mujoco.MjSpec, obj_name, initial_pos=[0.0, 0.0, 1.0]):
     # TODO: should this be body pos?
     body.pos = initial_pos
 
-
     # Append to keyframe
-    # if len(spec.keys) != 0:
-    #     current_qpos = spec.keys[0].qpos.tolist()
-    #     obj_qpos = initial_pos + [0.0, 0.0, 0.0, 1.0]
-    #     new_qpos = current_qpos + obj_qpos
-    #     spec.keys[0].qpos = new_qpos
+    if len(spec.keys) != 0:
+        current_qpos = spec.keys[0].qpos.tolist()
+        obj_qpos = initial_pos + [0.0, 0.0, 0.0, 1.0] # fixe3d initial orientation
+        new_qpos = current_qpos + obj_qpos
+        spec.keys[0].qpos = new_qpos
 
     return None
 

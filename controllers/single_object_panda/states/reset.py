@@ -23,26 +23,8 @@ class Reset(BaseState):
         GP.num_cycles += 1
         print("Controller cycle:", GP.num_cycles)
 
-        # TODO: update mj_model settings based on number of cycles here?
-
-        # TODO: reset using keyframe of model?
-
-        # set new "control" value
-        GP.gr_data.set_ctrl(GP.gr_data.all_idxs, fsm_params.ctrl_open)
-
-        # directly set wrist position
-        GP.mj_data.mocap_pos = fsm_params.base_pos_default
-        base_quat_default = np.zeros((4,))
-        mj.mju_mat2Quat(base_quat_default, fsm_params.base_R_default.flatten())
-        GP.mj_data.mocap_quat = base_quat_default
-
-        # TODO: directly set object position?
-        # now, it goes 7 for wrist pose, 2 for finger joints, 7 for object pose
-        # object pos is 9,10,11, and object quat is 12,13,14,15
-        GP.mj_data.qpos[9:12] = fsm_params.obj_pos_default
-        obj_quat_default = np.zeros((4,))
-        mj.mju_mat2Quat(obj_quat_default, fsm_params.obj_R_default.flatten())
-        GP.mj_data.qpos[12:16] = obj_quat_default
+        # reset to keyframe 0 (don't SET keyframe 0, as this will overwrite it!)
+        mj.mj_resetDataKeyframe(GP.mj_model, GP.mj_data, 0)
 
         # go to waiting state after reset
         next_state = "Waiting"
