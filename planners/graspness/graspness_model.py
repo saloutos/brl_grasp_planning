@@ -38,7 +38,7 @@ class GraspnessNet:
         # ready to evaluate
         self.model.eval()
 
-    def predict_scene_grasps(self, pcd_cam):
+    def predict_scene_grasps(self, pcd_cam, cam_extrinsics=None):
 
         # some pre-processing
         pc = np.asarray(pcd_cam.points)
@@ -106,12 +106,24 @@ class GraspnessNet:
             new_pose[:3,3] = g.translation - offset_dist*g.rotation_matrix[:3,0]
             pred_grasp_array[i,:4,:4] = new_pose
 
-        pred_grasps = {-1: pred_grasp_array}
-        # also return scores
-        grasp_scores = {-1 : gg.scores}
-        gripper_widths = {-1:  gg.widths}
+        # return pred_grasp_array, gg.scores, gg.widths
+        scores = np.asarray(gg.scores)
+        gripper_openings = np.asarray(gg.widths)
+        if cam_extrinsics is not None:
+            # convert to world frame, and return grasps in world frame
+            # put grasps in world frame
+            pred_grasps_world = np.zeros_like(pred_grasp_array)
+            for i,g in enumerate(pred_grasp_array):
+                pred_grasps_world[i,:4,:4] = np.matmul(cam_extrinsics, g)
+            # return grasps, scores, and grasp widths
+            return pred_grasps_world, scores, gripper_openings
+        else:
+            # return in camera frame
+            # return grasps, scores, and grasp widths
+            return pred_grasp_array, scores, gripper_openings
 
-        return pred_grasps, grasp_scores, gripper_widths
+
+
 
     def sample_points(self, masked_pc):
         # masked pc is numpy array

@@ -124,8 +124,6 @@ class EdgeGraspNet:
         edge_sample_index = all_edge_index[geometry_mask]
         print('Number of candidates after filtering: ', len(edge_sample_index))
 
-        pred_grasps, grasp_scores, gripper_widths = {}, {}, {}
-
         # actually evaluate model for these edges
         max_num_edges = self._edge_grasp_cfg['EVAL']['max_edges']
         if len(edge_sample_index) > 0:
@@ -155,14 +153,15 @@ class EdgeGraspNet:
             widths = (widths * 2)
 
             # move to CPU
-            # NOTE: dict key -1 is to match CGN implementation, in case we feed in segmented point clouds later
-            pred_grasps[-1] = masked_poses.detach().cpu().numpy()
-            grasp_scores[-1] = masked_scores.detach().cpu().numpy()
-            gripper_widths[-1] = widths.detach().cpu().numpy()
+            pred_grasps = masked_poses.detach().cpu().numpy()
+            grasp_scores = masked_scores.detach().cpu().numpy()
+            gripper_widths = widths.detach().cpu().numpy()
 
             # TODO: why was original code sampling grasp point here?
 
         else:
+            grasp_scores, gripper_widths = [0], [0]
+            pred_grasps = np.expand_dims(np.eye(4), axis=0)
             print('No candidates without collisions.')
 
         return pred_grasps, grasp_scores, gripper_widths

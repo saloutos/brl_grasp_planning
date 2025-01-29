@@ -227,7 +227,6 @@ def load_single_primitive(spec: mujoco.MjSpec,
     # Append to keyframe
     # NOTE: assumes just one keyframe for now
     if len(spec.keys) != 0:
-        print("adding key frame")
         current_qpos = spec.keys[0].qpos.tolist()
         obj_qpos = list(pos) + list(quat)
         new_qpos = current_qpos + obj_qpos
@@ -438,14 +437,13 @@ def vis_grasps_many_planners(pcd_input, pred_grasps=[], pred_grasp_colors=[], ot
     for i in range(len(pred_grasps)):
         pred_grasps_indiv = pred_grasps[i]
         color_indiv = pred_grasp_colors[i]
-        for i,k in enumerate(pred_grasps_indiv):
-            gripper_openings_k = np.ones(len(pred_grasps_indiv[k]))*gripper_width
 
-            draw_grasps(vis,
-                        pred_grasps_indiv[k],
-                        np.eye(4),
-                        colors=[color_indiv]*len(pred_grasps_indiv[k]),
-                        gripper_openings=gripper_openings_k)
+        gripper_openings = np.ones(len(pred_grasps_indiv))*gripper_width
+        draw_grasps(vis,
+                    pred_grasps_indiv,
+                    np.eye(4),
+                    colors=[color_indiv]*len(pred_grasps_indiv),
+                    gripper_openings=gripper_openings)
 
     vis.run()
     vis.destroy_window()
@@ -459,12 +457,12 @@ def visualize_grasps(pcd_cam, pred_grasps_cam, scores, window_name='Open3D', plo
 
     Arguments:
         full_pc {np.ndarray} -- Nx3 point cloud of the scene
-        pred_grasps_cam {dict[int:np.ndarray]} -- Predicted 4x4 grasp trafos per segment or for whole point cloud
-        scores {dict[int:np.ndarray]} -- Confidence scores for grasps
+        pred_grasps_cam {np.ndarray} -- nx4x4 grasps for whole point cloud
+        scores {np.ndarray} -- (n,) Confidence scores for grasps
 
     Keyword Arguments:
         plot_opencv_cam {bool} -- plot origin coordinate frame (default: {False})
-        gripper_openings {dict[int:np.ndarray]} -- Predicted grasp widths (default: {None})
+        gripper_openings {np.ndarray} -- (n,) Predicted grasp widths (default: {None})
         gripper_width {float} -- If gripper_openings is None, plot grasp widths (default: {0.008})
     """
 
@@ -483,33 +481,18 @@ def visualize_grasps(pcd_cam, pred_grasps_cam, scores, window_name='Open3D', plo
     cm = plt.get_cmap('rainbow')
     cm2 = plt.get_cmap('viridis')
 
-    colors = [cm(1. * i/len(pred_grasps_cam))[:3] for i in range(len(pred_grasps_cam))]
-    colors2 = {k:cm2(0.5*np.max(scores[k]))[:3] for k in pred_grasps_cam if np.any(pred_grasps_cam[k])}
+    # Set gripper openings
+    if gripper_openings is None:
+        gripper_openings = np.ones(len(scores))*gripper_width
 
-    for i,k in enumerate(pred_grasps_cam):
-        if np.any(pred_grasps_cam[k]):
-            # Set gripper openings
-            if gripper_openings is None:
-                gripper_openings_k = np.ones(len(pred_grasps_cam[k]))*gripper_width
-            else:
-                gripper_openings_k = gripper_openings[k]
+    max_score = np.max(scores)
+    min_score = np.min(scores)
 
-            if len(pred_grasps_cam) > 1:
-                draw_grasps(vis, pred_grasps_cam[k], np.eye(4), colors=[colors[i]], gripper_openings=gripper_openings_k)
-                draw_grasps(vis, [pred_grasps_cam[k][np.argmax(scores[k])]], np.eye(4), colors=[colors2[k]],
-                            gripper_openings=[gripper_openings_k[np.argmax(scores[k])]], tube_radius=0.0025)
-            else:
-                max_score = np.max(scores[k])
-                min_score = np.min(scores[k])
-
-                colors3 = [cm2((score - min_score) / (max_score - min_score))[:3] for score in scores[k]]
-                draw_grasps(vis, pred_grasps_cam[k], np.eye(4), colors=colors3, gripper_openings=gripper_openings_k)
-                best_grasp_idx = np.argmax(scores[k])
-                draw_grasps(vis, [pred_grasps_cam[k][best_grasp_idx]], np.eye(4), colors=[(1, 0, 0)], gripper_openings=gripper_openings_k)
-
-                # # plot grasp frames for debugging
-                # for g in pred_grasps_cam[k]:
-                #     plot_coordinates(vis, g[:3,3], g[:3,:3])
+    colors3 = [cm2((score - min_score) / (max_score - min_score))[:3] for score in scores]
+    draw_grasps(vis, pred_grasps_cam, np.eye(4), colors=colors3, gripper_openings=gripper_openings)
+    # TODO: the best grasp isn't always plotting correctly? not sure why though
+    best_grasp_idx = np.argmax(scores)
+    draw_grasps(vis, [pred_grasps_cam[best_grasp_idx,:,:]], np.eye(4), colors=[(1, 0, 0)], gripper_openings=[gripper_openings[best_grasp_idx]])
 
     vis.run()
     vis.destroy_window()

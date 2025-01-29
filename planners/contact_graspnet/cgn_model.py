@@ -42,8 +42,8 @@ class ContactGraspNet:
         # put loaded weights in model
         self.model.load_state_dict(model_state_dict)
 
-    # run model for entire scene
-    def predict_scene_grasps(self, pcd_cam, pc_segments={}, local_regions=False, filter_grasps=False, forward_passes=1, use_cam_boxes=True):
+    # run model for entire scene with segmented point clouds
+    def predict_scene_grasps_segments(self, pcd_cam, pc_segments={}, local_regions=False, filter_grasps=False, forward_passes=1, use_cam_boxes=True):
         """
         Predict num_point grasps on a full point cloud or in local box regions around point cloud segments.
 
@@ -79,15 +79,19 @@ class ContactGraspNet:
         # Filter grasp contacts to lie within object segment
         if filter_grasps:
             segment_keys = contact_pts.keys() if local_regions else pc_segments.keys()
+            print(segment_keys)
             for k in segment_keys:
+                print(k)
                 j = k if local_regions else -1
                 if np.any(pc_segments[k]) and np.any(contact_pts[j]):
+                    print('filtering')
                     segment_idcs = self.filter_segment(contact_pts[j], pc_segments[k], thres=self._contact_grasp_cfg['TEST']['filter_thres'])
 
                     pred_grasps_cam[k] = pred_grasps_cam[j][segment_idcs]
                     scores[k] = scores[j][segment_idcs]
                     contact_pts[k] = contact_pts[j][segment_idcs]
                     try:
+                        print('tried gripper openings')
                         gripper_openings[k] = gripper_openings[j][segment_idcs]
                     except:
                         print('skipped gripper openings {}'.format(gripper_openings[j]))
@@ -98,6 +102,44 @@ class ContactGraspNet:
                     print('skipping obj {} since  np.any(pc_segments[k]) {} and np.any(contact_pts[j]) is {}'.format(k, np.any(pc_segments[k]), np.any(contact_pts[j])))
         # return grasps, scores, contact points, and grasp widths
         return pred_grasps_cam, scores, contact_pts, gripper_openings
+
+
+    # run model for entire scene with segmented point clouds
+    def predict_scene_grasps(self, pcd_cam, cam_extrinsics=None):
+        """
+        Predict num_point grasps on a full point cloud or in local box regions around point cloud segments.
+
+        Arguments:
+            sess {tf.Session} -- Tensorflow Session
+            pc_full {np.ndarray} -- Nx3 full scene point cloud
+
+        Keyword Arguments:
+            pc_segments {dict[int, np.ndarray]} -- Dict of Mx3 segmented point clouds of objects of interest (default: {{}})
+            local_regions {bool} -- crop 3D local regions around object segments for prediction (default: {False})
+            filter_grasps {bool} -- filter grasp contacts such that they only lie within object segments (default: {False})
+            forward_passes {int} -- Number of forward passes to run on each point cloud. (default: {1})
+
+        Returns:
+            [np.ndarray, np.ndarray, np.ndarray, np.ndarray] -- pred_grasps_cam, scores, contact_pts, gripper_openings
+        """
+        pc_full = np.asarray(pcd_cam.points)
+        # TODO: play around with regularizing PC, inputs to predict grasps
+        pc_full = regularize_pc_point_count(pc_full, self._contact_grasp_cfg['DATA']['raw_num_points'])
+        pred_grasps_cam, scores, contact_pts, gripper_openings = self.predict_grasps(pc_full, convert_cam_coords=True, forward_passes=1)
+        print('Generated {} grasps'.format(len(pred_grasps_cam)))
+
+        if cam_extrinsics is not None:
+            # convert to world frame, and return grasps in world frame
+            # put grasps in world frame
+            pred_grasps_world = np.zeros_like(pred_grasps_cam)
+            for i,g in enumerate(pred_grasps_cam):
+                pred_grasps_world[i,:4,:4] = np.matmul(cam_extrinsics, g)
+            # return grasps, scores, contact points, and grasp widths
+            return pred_grasps_world, scores, gripper_openings
+        else:
+            # return grasps, scores, contact points, and grasp widths
+            return pred_grasps_cam, scores, gripper_openings
+
 
     # main function for evaluating model
     def predict_grasps(self, pc, constant_offset=False, convert_cam_coords=True, forward_passes=1):

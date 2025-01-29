@@ -159,7 +159,7 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     # # Show depth image
     # depth_array_colored = get_depth_display(depth_array_clipped)
     # cv2.imshow("Depth Map", depth_array_colored)
-    
+
 
     ### CONTACT GRASPNET ###
     print('')
@@ -175,27 +175,17 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     # generate grasp candidates
     # TODO: pass in grasp success threshold? take threshold from config file?
     print('Generating Grasps...')
-    # TODO: is dict with key -1 best way to return these values??
-    # TODO: do we ned to keep other function inputs?
     cgn_tic = time.time()
-    cgn_grasp_poses_cam, cgn_grasp_scores, cgn_contact_pts, cgn_grasp_widths = cgn.predict_scene_grasps(pcd_cam_crop,
-                                                                        pc_segments={},
-                                                                        local_regions=False,
-                                                                        filter_grasps=True,
-                                                                        forward_passes=1)
+    cgn_grasp_poses_world, cgn_grasp_scores, cgn_grasp_widths = cgn.predict_scene_grasps(pcd_cam_crop, cam_extrinsics)
     cgn_toc = time.time() - cgn_tic
-    # put grasps in world frame
-    cgn_grasp_poses_world_array = np.zeros_like(cgn_grasp_poses_cam[-1])
-    for i,g in enumerate(cgn_grasp_poses_cam[-1]):
-        cgn_grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
-    cgn_grasp_poses_world = {-1: cgn_grasp_poses_world_array}
     # visualize grasps
     # visualize_grasps(pcd_world_crop, cgn_grasp_poses_world, cgn_grasp_scores,
     #                 window_name = 'ContactGraspNet',
     #                 plot_origin=True,
     #                 gripper_openings=None)
     # also visualize grasps in mujoco
-    mjv_draw_grasps(viewer, cgn_grasp_poses_world[-1], rgba=[1,0,0, 0.25])
+    mjv_draw_grasps(viewer, cgn_grasp_poses_world, rgba=[1,0,0, 0.25])
+
 
     ### EDGE GRASP ###
     print('')
@@ -215,7 +205,7 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     #                 plot_origin=True,
     #                 gripper_openings=None)
     # also visualize grasps in mujoco
-    mjv_draw_grasps(viewer, edge_grasp_poses_world[-1], rgba=[1, 0.6, 0.1, 0.25])
+    mjv_draw_grasps(viewer, edge_grasp_poses_world, rgba=[1, 0.6, 0.1, 0.25])
 
     ### VN-EDGE GRASP ###
     # TODO: implement this
@@ -231,20 +221,16 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     gsnet = GraspnessNet(graspness_config)
     # generate grasp candidates
     gsnet_tic = time.time()
-    gsnet_grasp_poses_cam, gsnet_grasp_scores, gsnet_grasp_widths = gsnet.predict_scene_grasps(pcd_cam_crop)
+    gsnet_grasp_poses_world, gsnet_grasp_scores, gsnet_grasp_widths = gsnet.predict_scene_grasps(pcd_cam_crop, cam_extrinsics)
     gsnet_toc = time.time() - gsnet_tic
-    # put grasps in world frame
-    gsnet_grasp_poses_world_array = np.zeros_like(gsnet_grasp_poses_cam[-1])
-    for i,g in enumerate(gsnet_grasp_poses_cam[-1]):
-        gsnet_grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
-    gsnet_grasp_poses_world = {-1: gsnet_grasp_poses_world_array}
     # visualize grasps
     # visualize_grasps(pcd_world_crop, gsnet_grasp_poses_world, gsnet_grasp_scores,
     #                 window_name = 'Graspness',
     #                 plot_origin=True,
     #                 gripper_openings=None)
     # also visualize grasps in mujoco
-    mjv_draw_grasps(viewer, gsnet_grasp_poses_world[-1], rgba=[0.0, 1.0, 0.0, 0.25])
+    mjv_draw_grasps(viewer, gsnet_grasp_poses_world, rgba=[0.0, 1.0, 0.0, 0.25])
+
 
     ### GIGA PACKED? ###
     ### GIGA PILE? ###
@@ -266,7 +252,8 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     #                 gripper_openings=None)
     # TODO: visualize the estimated meshes too?
     # also visualize grasps in mujoco
-    mjv_draw_grasps(viewer, giga_grasp_poses_world[-1], rgba=[0,0.7,1, 0.5])
+    mjv_draw_grasps(viewer, giga_grasp_poses_world, rgba=[0,0.7,1, 0.5])
+
 
     ### ALL PLANNER OUTPUTS ###
     # plot world point cloud and grasps from each planner in their own color

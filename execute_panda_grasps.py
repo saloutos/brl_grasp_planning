@@ -35,10 +35,10 @@ scene_path = os.path.join(get_base_path(), "scene", "scene_with_panda_hand.xml")
 spec = mj.MjSpec.from_file(scene_path)
 
 # load a bunch of objects?
-# load_random_grid_fixed_primitives(spec, 4)
+load_random_grid_fixed_primitives(spec, 4)
 
 # single object to grasp
-load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_6.yaml", pos=[0,0,0.05], rpy=[0,0,0])
+# load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_6.yaml", pos=[0,0,0.05], rpy=[0,0,0])
 
 mj_model = spec.compile()
 
@@ -126,27 +126,23 @@ try:
                 plan_start = time.time()
                 # TODO: remove some of these inputs? probably don't need them
                 # TODO: stop returning dicts for each, just return the final grasp poses
-                grasp_poses_cam, scores, contact_pts, widths = CGN.predict_scene_grasps(pcd_cam,
-                                                                                    pc_segments={},
-                                                                                    local_regions=False,
-                                                                                    filter_grasps=True,
-                                                                                    forward_passes=1)
+                grasp_poses_world, grasp_scores, grasp_widths = CGN.predict_scene_grasps(pcd_cam, cam_extrinsics)
+
                 # grasp_poses_world, grasp_scores, grasp_widths = EDGE.predict_scene_grasps(pcd_world)
                 # grasp_poses_cam, grasp_scores, grasp_widths = GSN.predict_scene_grasps(pcd_cam)
                 # TODO: pull this out of the capture scene function!
                 # grasp_poses_world, grasp_scores, grasp_widths = GIGA.predict_scene_grasps(depth_array, k_d405_640x480, cam_extrinsics)
                 plan_time = time.time() - plan_start
 
-                # put grasps in world frame
-                grasp_poses_world_array = np.zeros_like(grasp_poses_cam[-1])
-                for i,g in enumerate(grasp_poses_cam[-1]):
-                    grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
-                grasp_poses_world = {-1: grasp_poses_world_array}
+                # # put grasps in world frame
+                # grasp_poses_world_array = np.zeros_like(grasp_poses_cam)
+                # for i,g in enumerate(grasp_poses_cam):
+                #     grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
 
-                best_grasp = np.argmax(scores[-1])
-                # best_score = scores[-1][best_grasp]
-                # best_width = widths[-1][best_grasp]
-                best_pose = grasp_poses_world_array[best_grasp,:,:]
+                best_grasp = np.argmax(grasp_scores)
+                best_score = grasp_scores[best_grasp]
+                best_width = grasp_widths[best_grasp]
+                best_pose = grasp_poses_world[best_grasp,:,:]
 
                 # can print info about best grasp
                 # print("Best grasp: ", best_grasp)
@@ -159,17 +155,17 @@ try:
                 PandaGP.planned_poses['grasp_pose'] = copy.deepcopy(best_pose)
 
                 # or set fixed pose here
-                PandaGP.planned_poses['grasp_pose'] = np.eye(4)
-                PandaGP.planned_poses['grasp_pose'][:3,:3] = np.array([[1.0, 0.0, 0.0],
-                                                                    [0.0, 0.0, 1.0],
-                                                                    [0.0, -1.0, 0.0]])
-                PandaGP.planned_poses['grasp_pose'][:3,3] = np.array([0.0, -0.1, 0.06])
+                # PandaGP.planned_poses['grasp_pose'] = np.eye(4)
+                # PandaGP.planned_poses['grasp_pose'][:3,:3] = np.array([[1.0, 0.0, 0.0],
+                #                                                     [0.0, 0.0, 1.0],
+                #                                                     [0.0, -1.0, 0.0]])
+                # PandaGP.planned_poses['grasp_pose'][:3,3] = np.array([0.0, -0.1, 0.06])
 
                 # finally, visualize the grasps
                 # TODO: add a grasp at approach pose too?
                 PandaGP.mj_viewer.user_scn.ngeom = 0
                 new_rgb = np.random.rand(3)
-                mjv_draw_grasps(PandaGP.mj_viewer, grasp_poses_world[-1], scores=scores[-1], linewidth=3)
+                mjv_draw_grasps(PandaGP.mj_viewer, grasp_poses_world, scores=grasp_scores, linewidth=3)
                 # mjv_draw_grasps(PandaGP.mj_viewer, grasp_poses_world[-1], rgba=[new_rgb[0], new_rgb[1], new_rgb[2], 0.25])
 
                 # visualize grasps in separate window

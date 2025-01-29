@@ -255,15 +255,12 @@ class GIGANet:
             for s in scores[p]:
                 grasp_scores.append(s)
 
-        # convert to dict format used by other models
+        # convert list of poses to array
         grasp_poses_array = np.zeros((len(grasp_scores),4,4))
         for i in range(len(grasp_scores)):
             grasp_poses_array[i,:4,:4] = grasp_poses[i]
-        grasp_poses = {-1: grasp_poses_array}
-        grasp_scores = {-1: grasp_scores}
-        grasp_widths = {-1: grasp_widths}
         # return grasps, scores, widths
-        return grasp_poses, grasp_scores, grasp_widths
+        return grasp_poses_array, np.asarray(grasp_scores), np.asarray(grasp_widths)
 
 
 
