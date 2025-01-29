@@ -31,11 +31,11 @@ class MoveToPreGrasp(BaseState):
         GP.gr_data.set_ctrl(GP.gr_data.all_idxs, fsm_params.ctrl_open)
 
         # set wrist cartesian position
-        # TODO: move from default to approach pose, then from approach pose to grasp pose here?
         ratio = (cur_time - self.start_time)/fsm_params.times['pregrasp']
+        ratio = np.clip(ratio, 0, 1)
         GP.gr_data.kinematics['base_des']['p'] = ratio*GP.planned_poses['grasp_pose'][:3,3] + (1-ratio)*GP.planned_poses['approach_pose'][:3,3]
-        # TODO: interpolate rotations?
-        GP.gr_data.kinematics['base_des']['R'] = GP.planned_poses['grasp_pose'][:3,:3] #ratio*fsm_params.base_R_default + (1-ratio)*fsm_params.base_R_default
+        # TODO: interpolate rotations
+        GP.gr_data.kinematics['base_des']['R'] = GP.planned_poses['grasp_pose'][:3,:3]
 
         # state transition to holding object
         if (cur_time-self.start_time) > fsm_params.times['pregrasp']:

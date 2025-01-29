@@ -1,6 +1,7 @@
 # imports
 import numpy as np
 import mujoco as mj
+import copy
 from controllers.base.baseState import *
 from .fsm_config import *
 
@@ -36,13 +37,14 @@ class Planning(BaseState):
         GP.gr_data.kinematics['base_des']['p'] = fsm_params.base_pos_default
         GP.gr_data.kinematics['base_des']['R'] = fsm_params.base_R_default
 
-        # TODO: add planning code here!
-        # and then make state transition dependent on planning code output
-
         # state transition to execute grasp
         # wait for complete plan, and some minimum time
         if GP.plan_complete and ((cur_time-self.start_time) > fsm_params.times['plan']):
             GP.plan_complete = False
+            # grasp pose has been populated, so calculate approach pose and execute plan
+            approach_pose = copy.deepcopy(GP.planned_poses['grasp_pose'])
+            approach_pose[:3,3] = approach_pose[:3,3] - fsm_params.approach_offset*approach_pose[:3,2]
+            GP.planned_poses['approach_pose'] = copy.deepcopy(approach_pose)
             next_state = "MoveToApproach"
 
         # check for manual state transition to grasp or reset

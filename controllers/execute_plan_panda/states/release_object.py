@@ -30,8 +30,8 @@ class ReleaseObject(BaseState):
         GP.gr_data.set_ctrl(GP.gr_data.all_idxs, fsm_params.ctrl_open)
 
         # set wrist cartesian position
-        GP.gr_data.kinematics['base_des']['p'] = fsm_params.base_pos_hold
-        GP.gr_data.kinematics['base_des']['R'] = fsm_params.base_R_hold
+        GP.gr_data.kinematics['base_des']['p'] = GP.planned_poses['grasp_pose'][:3,3] + fsm_params.base_pos_hold_offset
+        GP.gr_data.kinematics['base_des']['R'] = GP.planned_poses['grasp_pose'][:3,:3]
 
         # state transition to reset
         if (cur_time-self.start_time) > fsm_params.times['release']:

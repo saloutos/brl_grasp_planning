@@ -32,9 +32,11 @@ class LiftObject(BaseState):
 
         # set wrist cartesian position
         ratio = (cur_time - self.start_time)/fsm_params.times['lift']
-        GP.gr_data.kinematics['base_des']['p'] = ratio*fsm_params.base_pos_hold + (1-ratio)*GP.planned_poses['grasp_pose'][:3,3]
+        ratio = np.clip(ratio, 0, 1)
+        GP.gr_data.kinematics['base_des']['p'] = ratio*(GP.planned_poses['grasp_pose'][:3,3]+fsm_params.base_pos_hold_offset) \
+                                                    + (1-ratio)*GP.planned_poses['grasp_pose'][:3,3]
         # TODO: interpolate rotations?
-        GP.gr_data.kinematics['base_des']['R'] = fsm_params.base_R_hold #ratio*fsm_params.base_R_hold + (1-ratio)*fsm_params.base_R_default
+        GP.gr_data.kinematics['base_des']['R'] = GP.planned_poses['grasp_pose'][:3,:3]
 
         # state transition to holding object
         if (cur_time-self.start_time) > fsm_params.times['lift']:

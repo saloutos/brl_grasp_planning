@@ -116,11 +116,9 @@ try:
             if PandaGP.ready_to_plan:
                 PandaGP.ready_to_plan = False
 
-                # save image
+                # capture image of scene and create point cloud
                 pcd_cam, pcd_world, cam_extrinsics = PandaGP.capture_scene()
-
-                # Show point cloud
-                print(pcd_world)
+                # print(pcd_world)
 
                 # run planning
                 plan_start = time.time()
@@ -148,20 +146,17 @@ try:
                 best_width = widths[-1][best_grasp]
                 best_pose = grasp_poses_world_array[best_grasp,:,:]
 
-                print("Best grasp: ", best_grasp)
-                print("Score: ", best_score)
-                print("Width: ", best_width)
-                print("Pose: ", best_pose)
+                # can print info about best grasp
+                # print("Best grasp: ", best_grasp)
+                # print("Score: ", best_score)
+                # print("Width: ", best_width)
+                # print("Pose: ", best_pose)
 
-                # calculate approach pose from grasp pose
-                # TODO: check this
-                approach_pose = copy.deepcopy(best_pose)
-                approach_pose[:3,3] = approach_pose[:3,3] - 0.1*approach_pose[:3,2]
-
-                # save grasp pose and approach pose
-                PandaGP.planned_poses['approach_pose'] = copy.deepcopy(approach_pose)
+                # save grasp pose
+                # TODO: save any other information?
                 PandaGP.planned_poses['grasp_pose'] = copy.deepcopy(best_pose)
-                # PandaGP.planned_poses['approach_pose'][:3,3] = np.array([0.0, -0.2, 0.04])
+                # or set fixed pose here
+                # PandaGP.planned_poses['grasp_pose'] = np.eye(4)
                 # PandaGP.planned_poses['grasp_pose'][:3,3] = np.array([0.0, -0.1, 0.04])
 
                 # finally, visualize the grasps
