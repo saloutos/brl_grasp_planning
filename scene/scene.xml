@@ -2,6 +2,7 @@
   <compiler meshdir="table" texturedir="table" angle="radian" autolimits="true"/>
 
   <!-- TODO: check that these are the correct sweep parameters -->
+  <!-- TODO: make sure the other sweep parameters are set in other xml files!!! -->
   <option cone="elliptic" tolerance="1e-10" impratio="5" timestep="0.001" integrator="implicitfast" solver="Newton" noslip_iterations="0">
     <flag contact="enable" override="disable" multiccd="disable"/>
   </option>

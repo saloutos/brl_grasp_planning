@@ -33,10 +33,10 @@ spec = mujoco.MjSpec.from_file(scene_path)
 # np.random.seed(0)
 # CHOOSE TO LOAD YCB MESHES OR RANDOM PRIMITIVES?
 # load_random_grid_ycb(spec, 4)
-# load_random_grid_fixed_primitives(spec, 4)
+load_random_grid_fixed_primitives(spec, 4)
 # load_objects_from_yaml(spec, 'object_test.yaml')
 # single object to grasp
-load_objects_from_yaml(spec, "primitives/single_objects/fixed/cylinder_1.yaml", pos=[0,0,0.05], rpy=[0,0,0])
+# load_objects_from_yaml(spec, "primitives/single_objects/fixed/cylinder_1.yaml", pos=[0,0,0.05], rpy=[0,0,0])
 
 model = spec.compile()
 data = mujoco.MjData(model)
@@ -243,7 +243,8 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     giganet = GIGANet(giga_config)
     # generate grasp candidates
     giga_tic = time.time()
-    giga_grasp_poses_world, giga_grasp_scores, giga_grasp_widths = giganet.predict_scene_grasps(depth_array, k_d405_640x480, cam_extrinsics)
+    camera_intrinsics = (cam_width, cam_height, cam_cx, cam_cy, cam_f)
+    giga_grasp_poses_world, giga_grasp_scores, giga_grasp_widths = giganet.predict_scene_grasps(depth_array, camera_intrinsics, cam_extrinsics)
     giga_toc = time.time() - giga_tic
     # visualize grasps
     # visualize_grasps(pcd_world_crop, giga_grasp_poses_world, giga_grasp_scores,

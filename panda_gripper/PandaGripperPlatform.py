@@ -130,10 +130,10 @@ class PandaGripperPlatform:
         self.cam_fovy = np.deg2rad(self.mj_model.cam_fovy[self.cam_id])
         self.cam_width = 640
         self.cam_height = 480
-        cam_cx = self.cam_width/2
-        cam_cy = self.cam_height/2
-        cam_f = self.cam_height / (2 * math.tan(self.cam_fovy / 2))
-        self.cam_K = np.array([[cam_f, 0.0, cam_cx], [0.0, cam_f, cam_cy], [0.0, 0.0, 1.0]])
+        self.cam_cx = self.cam_width/2
+        self.cam_cy = self.cam_height/2
+        self.cam_f = self.cam_height / (2 * math.tan(self.cam_fovy / 2))
+        self.cam_K = np.array([[self.cam_f, 0.0, self.cam_cx], [0.0, self.cam_f, self.cam_cy], [0.0, 0.0, 1.0]])
         # k_d405_640x480 = CameraIntrinsic(cam_width, cam_height, cam_f, cam_f, cam_cx, cam_cy)
 
         # Setup MuJoCo rendering context
@@ -363,4 +363,4 @@ class PandaGripperPlatform:
         # get cropped point cloud in camera frame as well
         pcd_cam_crop = copy.deepcopy(pcd_world_crop).transform(np.linalg.inv(cam_extrinsics))
 
-        return pcd_cam_crop, pcd_world_crop, cam_extrinsics # could also return rgb_array, depth_array
+        return pcd_cam_crop, pcd_world_crop, cam_extrinsics, rgb_array, depth_array

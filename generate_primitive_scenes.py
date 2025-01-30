@@ -8,28 +8,32 @@ import mujoco.viewer
 from utils import *
 
 # some setup
-num_scenes = 1 # generate this many scenes
+num_scenes = 10 # generate this many scenes
+ke_thresh = 1e-6 # threshold for kinetic energy to determine stability
+
 fnames = os.listdir('primitives/single_objects/fixed') # get list of all individual primitives
-scene_path = os.path.join(get_base_path(), "scene", "scene.xml")
+scene_path = os.path.join(get_base_path(), "scene", "scene_with_enclosure.xml")
 
 for i in range(num_scenes): # TODO: this needs to wrap entire thing!!
     # create model
     spec = mujoco.MjSpec.from_file(scene_path)
 
     # pull in objects
-    num_objects = np.random.choice([6,7,8,9,10]) # choose between 6 and 10 objects
-    chosen_objects = np.random.choice(fnames, num_objects, replace=False)
+    num_objects = np.random.choice([7,8,9,10]) # choose between 6 and 10 objects
+
+    # sample with replacement? then can iterate through and check for panda compatibility if necessary
+    chosen_object_files = np.random.choice(fnames, num_objects, replace=False)
 
     # print scene info header
     print('')
     print('Scene ' + str(i+1) + ':')
-    print(chosen_objects)
+    print(chosen_object_files)
     print('')
     # dict for full scene
     scene = {}
 
     # for each object, load it into the scene
-    for j, obj in enumerate(chosen_objects):
+    for j, obj in enumerate(chosen_object_files):
         with open('primitives/single_objects/fixed/'+obj, 'r') as file:
             data = yaml.load(file, Loader=yaml.FullLoader)
             obj_name = list(data.keys())[0]
@@ -62,13 +66,13 @@ for i in range(num_scenes): # TODO: this needs to wrap entire thing!!
         scene.update(data)
 
     # print final dict
-    print(scene)
-    # save final scene yaml
-
+    chosen_object_names = list(scene.keys())
+    print(chosen_object_names)
+    # print(scene)
 
     # simulate until objects reach a steady state
-    # to limit velocities, turn down gravity
-    spec.option.gravity = np.array([0, 0, -0.01])
+    # to limit velocities, turn down gravity?
+    # spec.option.gravity = np.array([0, 0, -0.01])
 
     model = spec.compile()
     data = mujoco.MjData(model)
@@ -79,19 +83,39 @@ for i in range(num_scenes): # TODO: this needs to wrap entire thing!!
         while viewer.is_running():
             # step simulation
             mujoco.mj_step(model, data)
-            time.sleep(0.001)
+            # time.sleep(0.001)
             sim_t = data.time
             sim_i += 1
             viewer.sync()
 
+            # monitor energy and time
+            if sim_i % 100 == 0:
+                print('Time: {:.3f}, Kinetic Energy: {:6f}'.format(data.time, data.energy[1]))
             # check if objects are stable?
-
+            if data.energy[1] < ke_thresh:
+                break
 
     # update positions and orientations in scene dict and save to scene yaml
+    print('')
+    print('{} Objects:'.format(num_objects))
+    for obj_name in chosen_object_names:
+        # get positions and orientations of each object
+        obj_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, obj_name)
+        pos = data.xpos[obj_id]
+        quat = data.xquat[obj_id]
+        print(obj_id, obj_name, pos, quat)
 
+        # update scene dict
+        # add a small z-height increase to avoid initializing scene with contacts
+        scene[obj_name]['pos'] = [float(pos[0]), float(pos[1]), float(1.01*pos[2])]
+        scene[obj_name]['quat'] = [float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3])]
+        # remove rpy from scene keys since we are using quat for orientation now
+        scene[obj_name].pop('rpy', None)
 
-
-
-
-
-
+    # write to yaml
+    with open('primitives/collections/scene_'+str(i)+'.yaml', 'a') as file:
+        yaml.dump(scene, file)
+    # test
+    with open('primitives/collections/scene_'+str(i)+'.yaml', 'r') as file:
+        data = yaml.load(file, Loader=yaml.FullLoader)
+        # print(data)

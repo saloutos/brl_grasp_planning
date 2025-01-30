@@ -75,12 +75,12 @@ class GIGANet:
             convert_rgb_to_intensity=False,
         )
         intrinsic = o3d.camera.PinholeCameraIntrinsic(
-            width=camera_intrinsics.width,
-            height=camera_intrinsics.height,
-            fx=camera_intrinsics.fx,
-            fy=camera_intrinsics.fy,
-            cx=camera_intrinsics.cx,
-            cy=camera_intrinsics.cy,
+            width=camera_intrinsics[0],
+            height=camera_intrinsics[1],
+            cx=camera_intrinsics[2],
+            cy=camera_intrinsics[3],
+            fx=camera_intrinsics[4],
+            fy=camera_intrinsics[4]
         )
 
         # add offset for TSDF origin to camera pose, don't offset z-coords

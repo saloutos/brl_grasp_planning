@@ -34,8 +34,9 @@ spec = mujoco.MjSpec.from_file(scene_path)
 # load_objects_from_yaml(spec, 'object_test.yaml')
 # load_objects_from_yaml(spec, 'object_test_2.yaml')
 
+# load_random_grid_fixed_primitives(spec, 4)
 
-load_random_grid_fixed_primitives(spec, 4)
+load_objects_from_yaml(spec, 'primitives/collections/scene_9.yaml')
 
 model = spec.compile()
 data = mujoco.MjData(model)
