@@ -66,41 +66,12 @@ class PandaGripperPlatform:
         # NOTE: rendering is for grasp planning, needs to be set up here before simulation is started
         self.setup_rendering = setup_rendering
         if setup_rendering:
-            # Get the camera ID for 'overhead_cam'
-            self.cam_name = "overhead_cam"
-            self.cam_id = mj.mj_name2id(self.mj_model, mj.mjtObj.mjOBJ_CAMERA, self.cam_name)
-
-            # set up camera intrinsics
-            self.cam_fovy = np.deg2rad(self.mj_model.cam_fovy[self.cam_id])
+            # Setup MuJoCo rendering context
             self.cam_width = 640
             self.cam_height = 480
-            self.cam_cx = self.cam_width/2
-            self.cam_cy = self.cam_height/2
-            self.cam_f = self.cam_height / (2 * math.tan(self.cam_fovy / 2))
-            self.cam_K = np.array([[self.cam_f, 0.0, self.cam_cx], [0.0, self.cam_f, self.cam_cy], [0.0, 0.0, 1.0]])
-            # k_d405_640x480 = CameraIntrinsic(cam_width, cam_height, cam_f, cam_f, cam_cx, cam_cy)
-
-            # Setup MuJoCo rendering context
             self.gl_context = mj.GLContext(self.cam_width, self.cam_height)
             self.gl_context.make_current()
             self.renderer = mj.MjrContext(self.mj_model, mj.mjtFontScale.mjFONTSCALE_150)
-
-            # Get z-buffer properties
-            # https://github.com/google-deepmind/dm_control/blob/main/dm_control/mujoco/engine.py#L817
-            z_extent = self.mj_model.stat.extent
-            self.z_near = self.mj_model.vis.map.znear * z_extent # 0.005
-            self.z_far = self.mj_model.vis.map.zfar * z_extent # 30
-
-            # Define the camera parameters (you can modify these based on your need)
-            # https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-camera
-            self.cam = mj.MjvCamera()
-            self.cam.fixedcamid = self.cam_id  # Use the camera ID obtained earlier
-            self.cam.type = mj.mjtCamera.mjCAMERA_FIXED  # Fixed camera
-
-            # Prepare to render
-            self.scene = mj.MjvScene(self.mj_model, maxgeom=20000)
-            self.viewport = mj.MjrRect(0, 0, self.cam_width, self.cam_height)
-
 
         # general init for logging
         self.log_enable = (log_path is not None)
@@ -304,34 +275,61 @@ class PandaGripperPlatform:
         # TODO: update this
         self.mj_data.ctrl = self.gr_data.get_ctrl(self.gr_data.all_idxs)
 
-    def capture_scene(self):
+    def capture_scene(self, cam_name, crop=True):
 
         # need to make current every time
         self.gl_context.make_current()
         self.mj_viewer.sync()
 
+        # Get the camera ID for cam_name
+        cam_id = mj.mj_name2id(self.mj_model, mj.mjtObj.mjOBJ_CAMERA, cam_name)
+
+        # set up camera intrinsics
+        cam_fovy = np.deg2rad(self.mj_model.cam_fovy[cam_id])
+        cam_cx = self.cam_width/2
+        cam_cy = self.cam_height/2
+        cam_f = self.cam_height / (2 * math.tan(cam_fovy / 2))
+        cam_K = np.array([[cam_f, 0.0, cam_cx], [0.0, cam_f, cam_cy], [0.0, 0.0, 1.0]])
+        # TODO: could return this tuple!
+        cam_intrinsics = (self.cam_width, self.cam_height, cam_cx, cam_cy, cam_f)
+
+        # Get z-buffer properties
+        # https://github.com/google-deepmind/dm_control/blob/main/dm_control/mujoco/engine.py#L817
+        z_extent = self.mj_model.stat.extent
+        z_near = self.mj_model.vis.map.znear * z_extent # 0.005
+        z_far = self.mj_model.vis.map.zfar * z_extent # 30
+
+        # Define the camera parameters (you can modify these based on your need)
+        # https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-camera
+        cam = mj.MjvCamera()
+        cam.fixedcamid = cam_id  # Use the camera ID obtained earlier
+        cam.type = mj.mjtCamera.mjCAMERA_FIXED  # Fixed camera
+
+        # Prepare to render
+        scene = mj.MjvScene(self.mj_model, maxgeom=20000)
+        viewport = mj.MjrRect(0, 0, self.cam_width, self.cam_height)
+
         # update camera stuff
-        mj.mjv_updateScene(self.mj_model, self.mj_data, mj.MjvOption(), None, self.cam, mj.mjtCatBit.mjCAT_ALL, self.scene)
+        mj.mjv_updateScene(self.mj_model, self.mj_data, mj.MjvOption(), None, cam, mj.mjtCatBit.mjCAT_ALL, scene)
 
         # Render the scene to an offscreen buffer
-        mj.mjr_render(self.viewport, self.scene, self.renderer)
+        mj.mjr_render(viewport, scene, self.renderer)
 
         # Read pixels from the OpenGL buffer (MuJoCo renders in RGB format)
         rgb_array = np.zeros((self.cam_height, self.cam_width, 3), dtype=np.uint8)  # Image size: height=480, width=640
         depth_array = np.zeros((self.cam_height, self.cam_width), dtype=np.float32)  # Depth array
-        mj.mjr_readPixels(rgb_array, depth_array, self.viewport, self.renderer)
+        mj.mjr_readPixels(rgb_array, depth_array, viewport, self.renderer)
 
         # Flip the image vertically (because OpenGL origin is bottom-left)
         rgb_array = np.flipud(rgb_array)
         depth_array = np.flipud(depth_array)
 
         # convert from raw depth to metric depth
-        # depth_array = raw_to_metric_depth(depth_array, self.z_near, self.z_far)
-        depth_array = self.z_near / (1 - depth_array * (1 - self.z_near / self.z_far))
+        depth_array = z_near / (1 - depth_array * (1 - z_near / z_far))
 
         # --- Process image --- #
-        cam_xpos = self.mj_data.cam_xpos[self.cam_id]
-        cam_xmat = self.mj_data.cam_xmat[self.cam_id]
+        cam_xpos = self.mj_data.cam_xpos[cam_id]
+        cam_xmat = self.mj_data.cam_xmat[cam_id]
         cam_extrinsics = np.eye(4)
         cam_extrinsics[:3, :3] = cam_xmat.reshape(3, 3)
         cam_extrinsics[:3, 3] = cam_xpos
@@ -348,10 +346,10 @@ class PandaGripperPlatform:
         mask = np.where((depth_array > 0.0) & (depth_array < 2.0))
         x,y = mask[1], mask[0]
         pc_rgb = rgb_array[y,x,:]
-        normalized_x = (x.astype(np.float32) - self.cam_K[0,2])
-        normalized_y = (y.astype(np.float32) - self.cam_K[1,2])
-        world_x = normalized_x * depth_array[y, x] / self.cam_K[0,0]
-        world_y = normalized_y * depth_array[y, x] / self.cam_K[1,1]
+        normalized_x = (x.astype(np.float32) - cam_K[0,2])
+        normalized_y = (y.astype(np.float32) - cam_K[1,2])
+        world_x = normalized_x * depth_array[y, x] / cam_K[0,0]
+        world_y = normalized_y * depth_array[y, x] / cam_K[1,1]
         world_z = depth_array[y, x]
         pc_xyz = np.vstack((world_x, world_y, world_z)).T
 
@@ -363,9 +361,13 @@ class PandaGripperPlatform:
         # convert PC to world frame
         pcd_world = copy.deepcopy(pcd_cam).transform(cam_extrinsics)
         # crop PC based on bounding box in world frame
-        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.225]), np.eye(3), np.array([1.2, 0.8, 0.4]))
+        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.225]), np.eye(3), np.array([0.7, 0.6, 0.4]))
         pcd_world_crop = pcd_world.crop(workspace_bb)
         # get cropped point cloud in camera frame as well
         pcd_cam_crop = copy.deepcopy(pcd_world_crop).transform(np.linalg.inv(cam_extrinsics))
 
-        return pcd_cam_crop, pcd_world_crop, cam_extrinsics, rgb_array, depth_array
+        # TODO: could return pcd_cam, pcd_world, (cam_params), (image)
+        if crop:
+            return pcd_cam_crop, pcd_world_crop, cam_extrinsics, cam_intrinsics, rgb_array, depth_array
+        else:
+            return pcd_cam, pcd_world, cam_extrinsics, cam_intrinsics, rgb_array, depth_array

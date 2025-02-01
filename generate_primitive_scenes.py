@@ -21,8 +21,19 @@ for i in range(num_scenes): # TODO: this needs to wrap entire thing!!
     # pull in objects
     num_objects = np.random.choice([7,8,9,10]) # choose between 6 and 10 objects
 
-    # sample with replacement? then can iterate through and check for panda compatibility if necessary
-    chosen_object_files = np.random.choice(fnames, num_objects, replace=False)
+    # TODO: sample with replacement?
+    # chosen_object_files = np.random.choice(fnames, num_objects, replace=False)
+
+    # for panda, sample one at a time until desired number is reached
+    chosen_object_files = []
+    while len(chosen_object_files) < num_objects:
+        obj_to_load = np.random.choice(fnames)
+        with open('primitives/single_objects/fixed/'+obj_to_load, 'r') as file:
+            data = yaml.load(file, Loader=yaml.FullLoader)
+        obj_name = list(data.keys())[0]
+        # TODO: sample with replacement?
+        if data[obj_name]['panda_compat'] and obj_to_load not in chosen_object_files:
+            chosen_object_files.append(obj_to_load)
 
     # print scene info header
     print('')
@@ -112,10 +123,18 @@ for i in range(num_scenes): # TODO: this needs to wrap entire thing!!
         # remove rpy from scene keys since we are using quat for orientation now
         scene[obj_name].pop('rpy', None)
 
-    # write to yaml
-    with open('primitives/collections/scene_'+str(i)+'.yaml', 'a') as file:
+    # # write to yaml
+    # with open('primitives/collections/scene_'+str(i)+'.yaml', 'a') as file:
+    #     yaml.dump(scene, file)
+    # # test
+    # with open('primitives/collections/scene_'+str(i)+'.yaml', 'r') as file:
+    #     data = yaml.load(file, Loader=yaml.FullLoader)
+    #     # print(data)
+
+        # write to yaml
+    with open('primitives/collections/panda_graspable/scene_'+str(i)+'.yaml', 'a') as file:
         yaml.dump(scene, file)
     # test
-    with open('primitives/collections/scene_'+str(i)+'.yaml', 'r') as file:
+    with open('primitives/collections/panda_graspable/scene_'+str(i)+'.yaml', 'r') as file:
         data = yaml.load(file, Loader=yaml.FullLoader)
         # print(data)

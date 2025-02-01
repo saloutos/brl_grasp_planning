@@ -1,7 +1,7 @@
 <mujoco model="grasp_planning_scene">
   <compiler meshdir="table" texturedir="table" angle="radian" autolimits="true"/>
 
-  <include file="hands/franka_emika_panda/panda_only_hand_pos_control.xml"/>
+  <include file="hands/franka_emika_panda/panda_only_hand_force_control.xml"/>
 
   <option cone="elliptic" tolerance="1e-10" impratio="5" timestep="0.001" integrator="implicitfast" solver="Newton" noslip_iterations="0">
     <flag contact="enable" override="disable" multiccd="disable"/>
@@ -58,11 +58,38 @@
     <geom mesh="tabletop" material="table" class="table_visual" pos="0 0 -0.75" quat="1 0 0 1"/>
     <geom mesh="tablelegs" material="table" class="table_visual" pos="0 0 -0.75" quat="1 0 0 1"/>
     <geom name="table" pos="0 0 -0.1" size="0.609 0.3805 0.1005" type="box" class="collision"/>
+
+    <!-- <camera name="overhead_cam" -->
+        <!-- fovy="45" -->
+        <!-- resolution="1280 720" -->
+        <!-- pos="0 -0.4 0.8" mode="fixed" quat="0.976332 0.216277 0 0"/> -->
+    <!-- <geom name="overhead_cam_geom" class="camera" pos="0 -0.4 0.8" quat="0 0 0.976296 0.21644" mesh="d405_solid"/> -->
+
+    <!-- orientation of cam1: Rx(0.436rad) -->
     <camera name="overhead_cam"
             fovy="45"
             resolution="1280 720"
-            pos="0 -0.4 0.8" mode="fixed" quat="0.976332 0.216277 0 0"/>
-    <geom name="overhead_cam_geom" class="camera" pos="0 -0.4 0.8" quat="0 0 0.976332 0.216277" mesh="d405_solid"/>
+            pos="0 -0.4 0.8" mode="fixed" xyaxes="1 0 0 0 0.9064 0.4223"/>
+    <geom name="overhead_cam_geom" class="camera" pos="0 -0.4 0.8" xyaxes="1 0 0 0 0.9064 0.4223" mesh="d405_solid"/>
+
+    <camera name="overhead_cam2"
+            fovy="45"
+            resolution="1280 720"
+            pos="-0.4 0 0.8" mode="fixed" xyaxes="0 -1 0 0.9064 0 0.4223"/>
+    <geom name="overhead_cam_geom2" class="camera" pos="-0.4 0 0.8" xyaxes="0 -1 0 0.9064 0 0.4223" mesh="d405_solid"/>
+
+    <camera name="overhead_cam3"
+            fovy="45"
+            resolution="1280 720"
+            pos="0 0.4 0.8" mode="fixed" xyaxes="-1 0 0 0 -0.9064 0.4223"/>
+    <geom name="overhead_cam_geom3" class="camera" pos="0 0.4 0.8" xyaxes="-1 0 0 0 -0.9064 0.4223" mesh="d405_solid"/>
+
+    <camera name="overhead_cam4"
+            fovy="45"
+            resolution="1280 720"
+            pos="0.4 0 0.8" mode="fixed" xyaxes="0 1 0 -0.9064 0 0.4223"/>
+    <geom name="overhead_cam_geom4" class="camera" pos="0.4 0 0.8" xyaxes="0 1 0 -0.9064 0 0.4223" mesh="d405_solid"/>
+
   </worldbody>
 
 </mujoco>

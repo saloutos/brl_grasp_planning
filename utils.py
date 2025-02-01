@@ -16,7 +16,7 @@ def get_base_path():
     return base_dir_path
 
 ### PRIMITIVE OBJECT STUFF ###
-def load_random_grid_fixed_primitives(spec: mujoco.MjSpec, grid_side_length=4):
+def load_random_grid_fixed_primitives(spec: mujoco.MjSpec, grid_side_length=4, panda_graspable=False):
     total_length = 0.4
 
     edge = np.linspace(-total_length / 2, total_length / 2, grid_side_length)
@@ -27,14 +27,28 @@ def load_random_grid_fixed_primitives(spec: mujoco.MjSpec, grid_side_length=4):
     obj_path = os.path.join(get_base_path(), "primitives/single_objects/fixed")
     fnames = os.listdir(obj_path)
 
-    selected_objects = np.random.choice(fnames, grid_side_length ** 2, replace=False)
+    # may need to only load objects that panda can grasp
+    # if so, load objects one at a time, then check if they are graspable
+    if panda_graspable:
+        selected_objects = []
+        while len(selected_objects) < grid_side_length ** 2:
+            obj_to_load = np.random.choice(fnames)
+            with open('primitives/single_objects/fixed/'+obj_to_load, 'r') as file:
+                data = yaml.load(file, Loader=yaml.FullLoader)
+            obj_name = list(data.keys())[0]
+            # TODO: sample with replacement?
+            if data[obj_name]['panda_compat'] and obj_to_load not in selected_objects:
+                selected_objects.append(obj_to_load)
+    else:
+        # TODO: sample with replacement?
+        selected_objects = np.random.choice(fnames, grid_side_length ** 2, replace=False)
 
     for i in range(len(coordinate_grid_x)):
         xi = coordinate_grid_x[i]
         yi = coordinate_grid_y[i]
-        obj_to_load = selected_objects[i]
         initial_pos=[xi, yi, 0.2 + np.random.rand() * 0.1]
 
+        obj_to_load = selected_objects[i]
         with open('primitives/single_objects/fixed/'+obj_to_load, 'r') as file:
             data = yaml.load(file, Loader=yaml.FullLoader)
         obj_name = list(data.keys())[0]

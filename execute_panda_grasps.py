@@ -39,7 +39,7 @@ spec = mj.MjSpec.from_file(scene_path)
 # load_random_grid_fixed_primitives(spec, 4)
 
 # load a scene from a yaml file
-load_objects_from_yaml(spec, 'primitives/collections/scene_0.yaml')
+load_objects_from_yaml(spec, 'primitives/collections/scene_1.yaml')
 
 # single object to grasp
 # load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_7.yaml", pos=[0,0,0.08], rpy=[0,0,30])
@@ -99,9 +99,6 @@ try:
     print("Starting main loop.")
     real_start_time = time.time()
     log_start = PandaGP.time()
-
-    print(PandaGP.mj_model)
-
     while PandaGP.mj_viewer.is_running():
         if not PandaGP.paused:
             # step in time to update data from hardware or sim
@@ -127,12 +124,39 @@ try:
             if PandaGP.ready_to_plan:
                 PandaGP.ready_to_plan = False
 
+
                 # capture image of scene and create point cloud
-                pcd_cam, pcd_world, cam_extrinsics, rgb_array, depth_array = PandaGP.capture_scene()
+                # NOTE: creating point cloud from one camera takes about 0.15s
+                render_start = time.time()
+                pcd_cam, pcd_world, cam_extrinsics, cam_intrinsics, rgb_array, depth_array = PandaGP.capture_scene("overhead_cam")
+
+                # OPTIONAL: get data from other cameras too
+                pcd_cam2, pcd_world2, cam_extrinsics2, _, _, _ = PandaGP.capture_scene("overhead_cam2", crop=True)
+                pcd_cam3, pcd_world3, cam_extrinsics3, _, _, _ = PandaGP.capture_scene("overhead_cam3", crop=True)
+                pcd_cam4, pcd_world4, cam_extrinsics4, _, _, _ = PandaGP.capture_scene("overhead_cam4", crop=True)
+
+                # merge world point clouds
+                full_pcd_world = pcd_world + pcd_world2 + pcd_world3 + pcd_world4
+                full_pcd_world = full_pcd_world.voxel_down_sample(voxel_size=0.002)
+                # then convert back to first camera frame? or any other frame?
+                full_pcd_cam1 = copy.deepcopy(full_pcd_world).transform(np.linalg.inv(cam_extrinsics))
+
+                render_time = time.time() - render_start
+                print("Rendering completed in {:.2f} seconds.".format(render_time))
+
                 # print(pcd_world)
                 # vis = o3d.visualization.Visualizer()
                 # vis.create_window()
                 # vis.add_geometry(pcd_world)
+                # vis.add_geometry(pcd_world2)
+                # vis.add_geometry(pcd_world3)
+                # vis.add_geometry(pcd_world4)
+                # vis.run()
+                # vis.destroy_window()
+
+                # vis = o3d.visualization.Visualizer()
+                # vis.create_window()
+                # vis.add_geometry(full_pcd_world)
                 # vis.run()
                 # vis.destroy_window()
 
@@ -143,7 +167,9 @@ try:
                 grasp_poses_world, grasp_scores, grasp_widths = CGN.predict_scene_grasps(pcd_cam, cam_extrinsics)
                 # grasp_poses_world, grasp_scores, grasp_widths = EDGE.predict_scene_grasps(pcd_world)
                 # grasp_poses_world, grasp_scores, grasp_widths = GSN.predict_scene_grasps(pcd_cam, cam_extrinsics)
-                # grasp_poses_world, grasp_scores, grasp_widths = GIGA.predict_scene_grasps(depth_array, (PandaGP.cam_width, PandaGP.cam_height, PandaGP.cam_cx, PandaGP.cam_cy, PandaGP.cam_f), cam_extrinsics)
+
+                # TODO: fix this to work with multiple cameras!
+                # grasp_poses_world, grasp_scores, grasp_widths = GIGA.predict_scene_grasps(depth_array, cam_intrinsics, cam_extrinsics)
 
                 plan_time = time.time() - plan_start
 

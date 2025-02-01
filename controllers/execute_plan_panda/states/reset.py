@@ -26,6 +26,9 @@ class Reset(BaseState):
         # reset to keyframe 0 (don't SET keyframe 0, as this will overwrite it!)
         mj.mj_resetDataKeyframe(GP.mj_model, GP.mj_data, 0)
 
+        # reset user scn ngeom
+        GP.mj_viewer.user_scn.ngeom = 0
+
         # go to waiting state after reset
         next_state = "Waiting"
 
