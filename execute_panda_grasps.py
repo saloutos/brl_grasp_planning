@@ -39,7 +39,8 @@ spec = mj.MjSpec.from_file(scene_path)
 # load_random_grid_fixed_primitives(spec, 4)
 
 # load a scene from a yaml file
-load_objects_from_yaml(spec, 'primitives/collections/scene_1.yaml')
+# load_objects_from_yaml(spec, 'primitives/collections/scene_1.yaml')
+load_objects_from_yaml(spec, 'primitives/collections/panda_graspable/scene_0.yaml')
 
 # single object to grasp
 # load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_7.yaml", pos=[0,0,0.08], rpy=[0,0,30])
@@ -137,7 +138,7 @@ try:
 
                 # merge world point clouds
                 full_pcd_world = pcd_world + pcd_world2 + pcd_world3 + pcd_world4
-                full_pcd_world = full_pcd_world.voxel_down_sample(voxel_size=0.002)
+                full_pcd_world = full_pcd_world.voxel_down_sample(voxel_size=0.002) # TODO: tune this downsample parameter?
                 # then convert back to first camera frame? or any other frame?
                 full_pcd_cam1 = copy.deepcopy(full_pcd_world).transform(np.linalg.inv(cam_extrinsics))
 
@@ -208,7 +209,7 @@ try:
                 # mjv_draw_grasps(PandaGP.mj_viewer, grasp_poses_world[-1], rgba=[new_rgb[0], new_rgb[1], new_rgb[2], 0.25])
 
                 # visualize grasps in separate window
-                # visualize_grasps(pcd_world, grasp_poses_world, grasp_scores,
+                # visualize_grasps(full_pcd_world, grasp_poses_world, grasp_scores,
                 #                 window_name = 'Planned Grasps',
                 #                 plot_origin=True,
                 #                 gripper_openings=grasp_widths)

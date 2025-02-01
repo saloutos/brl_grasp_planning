@@ -96,10 +96,10 @@ for i in range(len(fixed_descriptions)):
         # set default values for pos and orientation
         temp = {'pos': [0, 0, 0], 'rpy': [0, 0, 0], 'friction': [1.0, 0.02, 0.0005]}
 
-        # based on size, set flag for if it is too big for panda gripper:
-        temp['panda_compat'] = False
+        # based on size, set flag to False if object is too big for panda gripper:
+        temp['panda_compat'] = True
         if size_choice[0] > 0.035:
-            temp['panda_compat'] = True
+            temp['panda_compat'] = False
 
         # choose type, mass
         temp['type'] = type_choice
