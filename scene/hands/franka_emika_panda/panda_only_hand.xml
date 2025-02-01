@@ -16,7 +16,7 @@
         <geom type="mesh" contype="0" conaffinity="0" group="2"/>
       </default>
       <default class="collision">
-        <geom type="mesh" group="3"/>
+        <geom type="mesh" group="3" condim="6" friction="1 0.02 0.0005" solimp="0.95 0.99 0.001 0.5 2" solref=".005 1"/>
         <default class="fingertip_pad_collision_1">
           <geom type="box" size="0.0085 0.004 0.0085" pos="0 0.0055 0.0445"/>
         </default>
@@ -111,13 +111,9 @@
   </tendon>
 
   <equality>
-    <joint joint1="finger_joint1" joint2="finger_joint2" solimp="0.95 0.99 0.001" solref="0.005 1"/>
-
+    <joint joint1="finger_joint1" joint2="finger_joint2" solimp="0.95 0.99 0.001 0.5 2" solref="0.005 1"/>
     <weld body1="floating_1" body2="floating_2" solimp="0.95 0.99 0.001 0.5 2"  solref="0.02 1"/>
-
   </equality>
-
-
 
   <actuator>
     <general class="panda" name="panda_actuator" tendon="split" forcerange="-100 100" ctrlrange="0 255"

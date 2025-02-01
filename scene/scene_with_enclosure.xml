@@ -1,8 +1,6 @@
 <mujoco model="grasp_planning_scene">
   <compiler meshdir="table" texturedir="table" angle="radian" autolimits="true"/>
 
-  <!-- TODO: check that these are the correct sweep parameters -->
-  <!-- TODO: make sure the other sweep parameters are set in other xml files!!! -->
   <option cone="elliptic" tolerance="1e-10" impratio="5" timestep="0.001" integrator="implicitfast" solver="Newton" noslip_iterations="0">
     <flag contact="enable" override="disable" multiccd="disable" energy="enable"/>
   </option>
@@ -45,7 +43,7 @@
       <geom type="mesh" mass="0" group="2" material="black" contype="0" conaffinity="0"/>
     </default>
     <default class="collision">
-      <geom group="3" type="mesh" condim="6" friction="1 5e-3 5e-4" solref=".01 1"/>
+      <geom group="3" type="mesh" condim="6" friction="1 0.02 0.0005" solimp="0.95 0.99 0.001 0.5 2" solref=".005 1"/>
       <default class="sphere_collision">
         <geom type="sphere" size="0.0006" rgba="1 0 0 1"/>
       </default>

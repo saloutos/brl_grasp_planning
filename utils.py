@@ -260,6 +260,16 @@ def load_ycb_obj(spec: mujoco.MjSpec, obj_name, initial_pos=[0.0, 0.0, 1.0]):
     geom.meshname = obj_name
     geom.material = obj_name + "_material"
 
+    # Set some default params of geom, body, and joint
+    geom.group = 1
+    geom.contype = 1
+    geom.conaffinity = 1
+    geom.condim = 6
+    geom.priority = 2
+    geom.solimp = [0.95, 0.99, 0.001, 0.5, 2]
+    geom.solref = [0.005, 1]
+    geom.friction=[1.0, 0.02, 0.0005] # sliding, torsion, rolling
+
     # TODO: should this be body pos?
     body.pos = initial_pos
 
