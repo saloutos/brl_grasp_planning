@@ -9,9 +9,13 @@ class FSMparams:
 
 fsm_params = FSMparams()
 
-# control values for open and close
+# control values for open and close (with position control panda)
 fsm_params.ctrl_open = np.array([250])
 fsm_params.ctrl_grasp = np.array([10])
+
+# # control values for open and close (with force control panda)
+# fsm_params.ctrl_open = np.array([0])
+# fsm_params.ctrl_grasp = np.array([10])
 
 # wrist pose default
 fsm_params.base_pos_default = np.array([0.0, -0.5, 0.2])

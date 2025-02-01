@@ -1,7 +1,7 @@
 <mujoco model="grasp_planning_scene">
   <compiler meshdir="table" texturedir="table" angle="radian" autolimits="true"/>
 
-  <include file="hands/franka_emika_panda/panda_only_hand.xml"/>
+  <include file="hands/franka_emika_panda/panda_only_hand_pos_control.xml"/>
 
   <option cone="elliptic" tolerance="1e-10" impratio="5" timestep="0.001" integrator="implicitfast" solver="Newton" noslip_iterations="0">
     <flag contact="enable" override="disable" multiccd="disable"/>

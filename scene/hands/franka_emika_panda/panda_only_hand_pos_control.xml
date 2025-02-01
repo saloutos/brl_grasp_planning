@@ -6,12 +6,9 @@
   <default>
     <default class="panda">
       <material specular="0.5" shininess="0.25"/>
-      <joint armature="0.1" damping="1" axis="0 0 1" range="-2.8973 2.8973"/>
-      <general dyntype="none" biastype="affine" ctrlrange="-2.8973 2.8973" forcerange="-87 87"/>
       <default class="finger">
-        <joint axis="0 1 0" type="slide" range="0 0.04"/>
+        <joint axis="0 1 0" type="slide" range="0 0.04" armature="0.2" damping="2"/>
       </default>
-
       <default class="visual">
         <geom type="mesh" contype="0" conaffinity="0" group="2"/>
       </default>
@@ -115,9 +112,21 @@
     <weld body1="floating_1" body2="floating_2" solimp="0.95 0.99 0.001 0.5 2"  solref="0.02 1"/>
   </equality>
 
+
+  <!-- in current configuration, actuator length: length = tendon_length * gear[0] -->
+  <!-- in current configuration, actuator force: scalar_force = gainprm[0]*ctrl + biasprm[0] + biasprm[1]*length + biasprm[2]*velocity -->
+  <!-- so, scalar_force = 0.0157*(0, 255) - 100*(finger_joint) - 10*(finger_vel) -->
+  <!-- rearranging, scalar_force = 100*(finger_joint_des - finger_joint) - 10*finger_vel, finger_joint_des = (0.0157/100)*ctrl -->
+  <!-- to increase overall force, need to scale gainprm[0] and biasprm[1] by the same amount -->
+  <!-- default gainprm[0] was 0.01568627451 -->
   <actuator>
-    <general class="panda" name="panda_actuator" tendon="split" forcerange="-100 100" ctrlrange="0 255"
-      gainprm="0.01568627451 0 0" biasprm="0 -100 -10"/>
+    <general name="panda_actuator"
+      tendon="split"
+      gear = "1 0 0 0 0 0"
+      ctrlrange="0 255"
+      gaintype="fixed" gainprm="0.06274509804 0 0"
+      biastype="affine" biasprm="0 -400 -40"
+      forcerange="-100 100" />
   </actuator>
 
   <keyframe>

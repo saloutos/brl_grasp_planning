@@ -99,6 +99,9 @@ try:
     print("Starting main loop.")
     real_start_time = time.time()
     log_start = PandaGP.time()
+
+    print(PandaGP.mj_model)
+
     while PandaGP.mj_viewer.is_running():
         if not PandaGP.paused:
             # step in time to update data from hardware or sim
