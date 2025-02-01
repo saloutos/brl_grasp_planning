@@ -578,7 +578,7 @@ def draw_grasps(vis, grasps, cam_pose, gripper_openings, colors=[(0, 1., 0)]):
     line_set.colors = o3d.utility.Vector3dVector(colors)
     vis.add_geometry(line_set)
 
-def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), rgba=[0.0, 1.0, 0.0, 0.1], scores=None, linewidth=2):
+def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), scores=None, widths=None, rgba=[0.0, 1.0, 0.0, 0.1], linewidth=3):
     # TODO: add gripper openings, multiple colors back in?
     """
     Draws wireframe grasps from given camera pose and with given gripper openings
@@ -624,7 +624,10 @@ def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), rgba=[0.0, 1.0, 0.0, 0.1
     # for i, (g,g_opening) in enumerate(zip(grasps, gripper_openings)):
     for i, g in enumerate(grasps):
         gripper_control_points_closed = grasp_line_plot.copy()
-        g_opening = 0.08
+        if widths is not None:
+            g_opening = widths[i]
+        else:
+            g_opening = 0.08
         gripper_control_points_closed[2:,0] = np.sign(grasp_line_plot[2:,0]) * g_opening/2
 
         pts = np.matmul(gripper_control_points_closed, g[:3, :3].T)

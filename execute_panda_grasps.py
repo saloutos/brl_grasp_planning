@@ -12,6 +12,7 @@ from datetime import datetime as dt
 import glfw
 import copy
 import open3d as o3d
+import math
 
 from utils import *
 from panda_gripper.PandaGripperPlatform import PandaGripperPlatform
@@ -46,7 +47,7 @@ load_objects_from_yaml(spec, 'primitives/collections/scene_0.yaml')
 mj_model = spec.compile()
 
 # platform
-PandaGP = PandaGripperPlatform(mj_model, viewer_enable=True, log_path=None)
+PandaGP = PandaGripperPlatform(mj_model, viewer_enable=True, setup_rendering=True, log_path=None)
 
 # controller
 # from controllers.single_object_panda.PandaGrabLiftFSM import PandaGrabLiftFSM
@@ -57,16 +58,16 @@ controller = PandaGrabLiftFSM()
 # planner(s)
 
 # Contact Grasp Net
-# with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
-#     cgn_config = yaml.safe_load(f)
-# cgn_config['OPTIMIZER']['batch_size'] = int(1)
-# cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
-# CGN = ContactGraspNet(cgn_config)
+with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
+    cgn_config = yaml.safe_load(f)
+cgn_config['OPTIMIZER']['batch_size'] = int(1)
+cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
+CGN = ContactGraspNet(cgn_config)
 
 # Edge Grasp
-with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
-    edge_grasp_config = yaml.safe_load(f)
-EDGE = EdgeGraspNet(edge_grasp_config)
+# with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
+#     edge_grasp_config = yaml.safe_load(f)
+# EDGE = EdgeGraspNet(edge_grasp_config)
 
 # GS Net
 # with open('planners/graspness/graspness_config.yaml', 'r') as f:
@@ -92,7 +93,6 @@ print("Finished init.")
 try:
     tty.setcbreak(sys.stdin.fileno())
     PandaGP.initialize()
-    PandaGP.initialize_rendering() # need this for planning
     controller.begin(PandaGP)
     PandaGP.apply_control()
     PandaGP.sync_viewer()
@@ -127,14 +127,18 @@ try:
                 # capture image of scene and create point cloud
                 pcd_cam, pcd_world, cam_extrinsics, rgb_array, depth_array = PandaGP.capture_scene()
                 # print(pcd_world)
-                # o3d.visualization.draw_geometries([pcd_world])
+                # vis = o3d.visualization.Visualizer()
+                # vis.create_window()
+                # vis.add_geometry(pcd_world)
+                # vis.run()
+                # vis.destroy_window()
 
                 # run planning
                 plan_start = time.time()
 
                 ### TODO: choose planner here!!!
-                # grasp_poses_world, grasp_scores, grasp_widths = CGN.predict_scene_grasps(pcd_cam, cam_extrinsics)
-                grasp_poses_world, grasp_scores, grasp_widths = EDGE.predict_scene_grasps(pcd_world)
+                grasp_poses_world, grasp_scores, grasp_widths = CGN.predict_scene_grasps(pcd_cam, cam_extrinsics)
+                # grasp_poses_world, grasp_scores, grasp_widths = EDGE.predict_scene_grasps(pcd_world)
                 # grasp_poses_world, grasp_scores, grasp_widths = GSN.predict_scene_grasps(pcd_cam, cam_extrinsics)
                 # grasp_poses_world, grasp_scores, grasp_widths = GIGA.predict_scene_grasps(depth_array, (PandaGP.cam_width, PandaGP.cam_height, PandaGP.cam_cx, PandaGP.cam_cy, PandaGP.cam_f), cam_extrinsics)
 
@@ -171,14 +175,14 @@ try:
                 # TODO: add a grasp at approach pose too?
                 PandaGP.mj_viewer.user_scn.ngeom = 0
                 new_rgb = np.random.rand(3)
-                mjv_draw_grasps(PandaGP.mj_viewer, grasp_poses_world, scores=grasp_scores, linewidth=3)
+                mjv_draw_grasps(PandaGP.mj_viewer, grasp_poses_world, scores=grasp_scores, widths=grasp_widths)
                 # mjv_draw_grasps(PandaGP.mj_viewer, grasp_poses_world[-1], rgba=[new_rgb[0], new_rgb[1], new_rgb[2], 0.25])
 
                 # visualize grasps in separate window
-                # visualize_grasps(pcd_world, grasp_poses_world, scores,
-                #                 window_name = 'ContactGraspNet',
+                # visualize_grasps(pcd_world, grasp_poses_world, grasp_scores,
+                #                 window_name = 'Planned Grasps',
                 #                 plot_origin=True,
-                #                 gripper_openings=None)
+                #                 gripper_openings=grasp_widths)
 
                 print("Planning completed in {:.2f} seconds.".format(plan_time))
 

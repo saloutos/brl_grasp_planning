@@ -26,7 +26,7 @@ class PlatformMode(Enum):
 
 # define the PANDA Gripper Platform class
 class PandaGripperPlatform:
-    def __init__(self, mj_model, viewer_enable=True, log_path=None):
+    def __init__(self, mj_model, viewer_enable=True, setup_rendering=False, log_path=None):
         # based on enable flags, set platform mode
         # TODO: might not need to save flags as class variables, should use mode for everything from here onwards?
         # TODO: pass modes as arguments instead of flags, check modes everywhere? then can re-set mode bewteen init and initialize()
@@ -61,6 +61,46 @@ class PandaGripperPlatform:
         self.run_control = False
         self.char_in = None
         self.new_char = False
+
+        # setup for rendering
+        # NOTE: rendering is for grasp planning, needs to be set up here before simulation is started
+        self.setup_rendering = setup_rendering
+        if setup_rendering:
+            # Get the camera ID for 'overhead_cam'
+            self.cam_name = "overhead_cam"
+            self.cam_id = mj.mj_name2id(self.mj_model, mj.mjtObj.mjOBJ_CAMERA, self.cam_name)
+
+            # set up camera intrinsics
+            self.cam_fovy = np.deg2rad(self.mj_model.cam_fovy[self.cam_id])
+            self.cam_width = 640
+            self.cam_height = 480
+            self.cam_cx = self.cam_width/2
+            self.cam_cy = self.cam_height/2
+            self.cam_f = self.cam_height / (2 * math.tan(self.cam_fovy / 2))
+            self.cam_K = np.array([[self.cam_f, 0.0, self.cam_cx], [0.0, self.cam_f, self.cam_cy], [0.0, 0.0, 1.0]])
+            # k_d405_640x480 = CameraIntrinsic(cam_width, cam_height, cam_f, cam_f, cam_cx, cam_cy)
+
+            # Setup MuJoCo rendering context
+            self.gl_context = mj.GLContext(self.cam_width, self.cam_height)
+            self.gl_context.make_current()
+            self.renderer = mj.MjrContext(self.mj_model, mj.mjtFontScale.mjFONTSCALE_150)
+
+            # Get z-buffer properties
+            # https://github.com/google-deepmind/dm_control/blob/main/dm_control/mujoco/engine.py#L817
+            z_extent = self.mj_model.stat.extent
+            self.z_near = self.mj_model.vis.map.znear * z_extent # 0.005
+            self.z_far = self.mj_model.vis.map.zfar * z_extent # 30
+
+            # Define the camera parameters (you can modify these based on your need)
+            # https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-camera
+            self.cam = mj.MjvCamera()
+            self.cam.fixedcamid = self.cam_id  # Use the camera ID obtained earlier
+            self.cam.type = mj.mjtCamera.mjCAMERA_FIXED  # Fixed camera
+
+            # Prepare to render
+            self.scene = mj.MjvScene(self.mj_model, maxgeom=20000)
+            self.viewport = mj.MjrRect(0, 0, self.cam_width, self.cam_height)
+
 
         # general init for logging
         self.log_enable = (log_path is not None)
@@ -117,45 +157,12 @@ class PandaGripperPlatform:
         if self.log_enable:
             self.log_start = self.time()
 
-    def initialize_rendering(self):
-        # set up camera stuff for planning here
+    # def initialize_rendering(self):
+    #     # set up camera stuff for planning here
 
-        # TODO: add an "enable rendering" flag here?
+    #     # TODO: add an "enable rendering" flag here?
 
-        # Get the camera ID for 'overhead_cam'
-        self.cam_name = "overhead_cam"
-        self.cam_id = mj.mj_name2id(self.mj_model, mj.mjtObj.mjOBJ_CAMERA, self.cam_name)
 
-        # set up camera intrinsics
-        self.cam_fovy = np.deg2rad(self.mj_model.cam_fovy[self.cam_id])
-        self.cam_width = 640
-        self.cam_height = 480
-        self.cam_cx = self.cam_width/2
-        self.cam_cy = self.cam_height/2
-        self.cam_f = self.cam_height / (2 * math.tan(self.cam_fovy / 2))
-        self.cam_K = np.array([[self.cam_f, 0.0, self.cam_cx], [0.0, self.cam_f, self.cam_cy], [0.0, 0.0, 1.0]])
-        # k_d405_640x480 = CameraIntrinsic(cam_width, cam_height, cam_f, cam_f, cam_cx, cam_cy)
-
-        # Setup MuJoCo rendering context
-        self.gl_context = mj.GLContext(self.cam_width, self.cam_height)
-        self.gl_context.make_current()
-        self.renderer = mj.MjrContext(self.mj_model, mj.mjtFontScale.mjFONTSCALE_150)
-
-        # Get z-buffer properties
-        # https://github.com/google-deepmind/dm_control/blob/main/dm_control/mujoco/engine.py#L817
-        z_extent = self.mj_model.stat.extent
-        self.z_near = self.mj_model.vis.map.znear * z_extent # 0.005
-        self.z_far = self.mj_model.vis.map.zfar * z_extent # 30
-
-        # Define the camera parameters (you can modify these based on your need)
-        # https://mujoco.readthedocs.io/en/stable/XMLreference.html#body-camera
-        self.cam = mj.MjvCamera()
-        self.cam.fixedcamid = self.cam_id  # Use the camera ID obtained earlier
-        self.cam.type = mj.mjtCamera.mjCAMERA_FIXED  # Fixed camera
-
-        # Prepare to render
-        self.scene = mj.MjvScene(self.mj_model, maxgeom=20000)
-        self.viewport = mj.MjrRect(0, 0, self.cam_width, self.cam_height)
 
     def shutdown(self):
         # close viewer
@@ -299,10 +306,8 @@ class PandaGripperPlatform:
 
     def capture_scene(self):
 
-        # TODO: check an "enable rendering" flag here?
+        # need to make current every time
         self.gl_context.make_current()
-
-        self.mj_viewer.user_scn.ngeom = 0
         self.mj_viewer.sync()
 
         # update camera stuff
