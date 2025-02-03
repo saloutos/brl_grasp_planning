@@ -25,7 +25,7 @@ class GIGANet:
         # some params from giga init
         # TODO: put these in config file
         self.best = False # only return top grasp
-        self.always_detect = True # always return at least one grasp, regardless of threshold
+        self.always_detect = True # always return at least one grasp, regardless of threshold # TODO: this would be useful for other planners too!
         self.qual_th = 0.8 # 0.9
         self.tsdf_resolution = 100 # 40
         # TODO: eventually, increase this
@@ -54,7 +54,7 @@ class GIGANet:
         self.sample_pos = pos.view(1, self.sample_resolution * self.sample_resolution * self.sample_resolution, 3)
 
     # run model for an entire scene
-    def predict_scene_grasps(self, depth_image, camera_intrinsics, camera_pose):
+    def predict_scene_grasps(self, depth_images, camera_intrinsics, camera_poses):
 
         # create scene TSDF
         # TODO: time this, is it ineffecient?
@@ -67,27 +67,36 @@ class GIGANet:
             sdf_trunc=sdf_trunc,
             color_type=o3d.pipelines.integration.TSDFVolumeColorType.NoColor,
         )
-        rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
-            o3d.geometry.Image(np.empty_like(depth_image)),
-            o3d.geometry.Image(depth_image),
-            depth_scale=1.0,
-            depth_trunc=2.0,
-            convert_rgb_to_intensity=False,
-        )
-        intrinsic = o3d.camera.PinholeCameraIntrinsic(
-            width=camera_intrinsics[0],
-            height=camera_intrinsics[1],
-            cx=camera_intrinsics[2],
-            cy=camera_intrinsics[3],
-            fx=camera_intrinsics[4],
-            fy=camera_intrinsics[4]
-        )
 
-        # add offset for TSDF origin to camera pose, don't offset z-coords
-        camera_pose[0,3] += self.size/2.0
-        camera_pose[1,3] += self.size/2.0
-        camera_pose[2,3] += self.size/2.0
-        tsdf.integrate(rgbd, intrinsic, np.linalg.inv(camera_pose))
+        # NOTE: assuming all cameras have same intrinsics
+        intrinsic = o3d.camera.PinholeCameraIntrinsic(
+                width=camera_intrinsics[0],
+                height=camera_intrinsics[1],
+                cx=camera_intrinsics[2],
+                cy=camera_intrinsics[3],
+                fx=camera_intrinsics[4],
+                fy=camera_intrinsics[4]
+            )
+
+        # loop through depth images and integrate into TSDF
+        for i in range(len(depth_images)):
+            # get individual data
+            depth_image = depth_images[i]
+            camera_pose = camera_poses[i]
+            # create image object
+            rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+                o3d.geometry.Image(np.empty_like(depth_image)),
+                o3d.geometry.Image(depth_image),
+                depth_scale=1.0,
+                depth_trunc=2.0,
+                convert_rgb_to_intensity=False)
+            # add offset for TSDF origin to camera pose
+            camera_pose[0,3] += self.size/2.0
+            camera_pose[1,3] += self.size/2.0
+            camera_pose[2,3] += self.size/2.0
+            # integrate image into TSDF
+            tsdf.integrate(rgbd, intrinsic, np.linalg.inv(camera_pose))
+
         # TODO: is this part too slow?
         # what is this doing? why is it pulling out color?
         shape = (1, self.tsdf_resolution, self.tsdf_resolution, self.tsdf_resolution)
@@ -99,11 +108,11 @@ class GIGANet:
 
         # Show point cloud
         pcd_new = tsdf.extract_point_cloud()
-        # o3d.visualization.draw_geometries([pcd_new])
+        o3d.visualization.draw_geometries([pcd_new])
         # show mesh
         mesh = tsdf.extract_triangle_mesh()
         mesh.compute_vertex_normals()
-        # o3d.visualization.draw_geometries([mesh])
+        o3d.visualization.draw_geometries([mesh])
 
         # run model
         with torch.no_grad():

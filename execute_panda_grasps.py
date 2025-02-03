@@ -40,10 +40,10 @@ spec = mj.MjSpec.from_file(scene_path)
 
 # load a scene from a yaml file
 # load_objects_from_yaml(spec, 'primitives/collections/scene_1.yaml')
-load_objects_from_yaml(spec, 'primitives/collections/panda_graspable/scene_0.yaml')
+#load_objects_from_yaml(spec, 'primitives/collections/panda_graspable/scene_0.yaml')
 
 # single object to grasp
-# load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_7.yaml", pos=[0,0,0.08], rpy=[0,0,30])
+load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_7.yaml", pos=[0,0,0.08], rpy=[0,0,0])
 
 mj_model = spec.compile()
 
@@ -75,7 +75,7 @@ CGN = ContactGraspNet(cgn_config)
 #     graspness_config = yaml.safe_load(f)
 # GSN = GraspnessNet(graspness_config)
 
-# GIGA
+# # GIGA
 # with open('planners/giga/giga_config.yaml', 'r') as f:
 #     giga_config = yaml.safe_load(f)
 # GIGA = GIGANet(giga_config)
@@ -132,9 +132,9 @@ try:
                 pcd_cam, pcd_world, cam_extrinsics, cam_intrinsics, rgb_array, depth_array = PandaGP.capture_scene("overhead_cam")
 
                 # OPTIONAL: get data from other cameras too
-                pcd_cam2, pcd_world2, cam_extrinsics2, _, _, _ = PandaGP.capture_scene("overhead_cam2", crop=True)
-                pcd_cam3, pcd_world3, cam_extrinsics3, _, _, _ = PandaGP.capture_scene("overhead_cam3", crop=True)
-                pcd_cam4, pcd_world4, cam_extrinsics4, _, _, _ = PandaGP.capture_scene("overhead_cam4", crop=True)
+                pcd_cam2, pcd_world2, cam_extrinsics2, cam_intrinsics2, rgb_array2, depth_array2 = PandaGP.capture_scene("overhead_cam2", crop=True)
+                pcd_cam3, pcd_world3, cam_extrinsics3, cam_intrinsics3, rgb_array3, depth_array3 = PandaGP.capture_scene("overhead_cam3", crop=True)
+                pcd_cam4, pcd_world4, cam_extrinsics4, cam_intrinsics4, rgb_array4, depth_array4 = PandaGP.capture_scene("overhead_cam4", crop=True)
 
                 # merge world point clouds
                 full_pcd_world = pcd_world + pcd_world2 + pcd_world3 + pcd_world4
@@ -168,9 +168,10 @@ try:
                 grasp_poses_world, grasp_scores, grasp_widths = CGN.predict_scene_grasps(pcd_cam, cam_extrinsics)
                 # grasp_poses_world, grasp_scores, grasp_widths = EDGE.predict_scene_grasps(pcd_world)
                 # grasp_poses_world, grasp_scores, grasp_widths = GSN.predict_scene_grasps(pcd_cam, cam_extrinsics)
-
-                # TODO: fix this to work with multiple cameras!
-                # grasp_poses_world, grasp_scores, grasp_widths = GIGA.predict_scene_grasps(depth_array, cam_intrinsics, cam_extrinsics)
+                # NOTE: for GIGA, choose how many camera views to use
+                # depths = [depth_array] # depth_array2, depth_array3, depth_array4]
+                # cam_poses = [cam_extrinsics] # cam_extrinsics2, cam_extrinsics3, cam_extrinsics4]
+                # grasp_poses_world, grasp_scores, grasp_widths = GIGA.predict_scene_grasps(depths, cam_intrinsics, cam_poses)
 
                 plan_time = time.time() - plan_start
 
