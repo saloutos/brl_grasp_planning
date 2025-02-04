@@ -12,7 +12,7 @@ class FarthestSamplerTorch:
     def __call__(self, pts, k):
         index_list = []
         farthest_pts = torch.zeros(k, 3).to(pts.device)
-        index = np.random.randint(len(pts))
+        index = torch.tensor(np.random.randint(len(pts))).to(pts.device)
         farthest_pts[0] = pts[index]
         index_list.append(index)
         distances = self._calc_distances(farthest_pts[0], pts)
@@ -35,18 +35,17 @@ def orthogonal_grasps(geometry_mask, depth_projection, sample_normal, des_normal
     '''
     # if these is no reasonable points do nothing
     assert sum(geometry_mask)>0
+
+    # calculate gripper depth from contact point
+    # TODO: should this be less hardcoded?
     depth = depth_projection[geometry_mask]
     # finger depth
     depth_compensation = 0.035
     gripper_dis_from_source = (0.072 - 0.007 + depth_compensation - depth).unsqueeze(dim=-1)
 
-    z_axis = -sample_normal[geometry_mask]  # todo careful
-
-    # y_axis = des_normals[geometry_mask]
-    # x_axis = torch.cross(y_axis, z_axis, dim=1)
-    # x_axis = F.normalize(x_axis, p=2, dim=1)
-    # y_axis = torch.cross(z_axis, x_axis, dim=1)
-    # y_axis = F.normalize(y_axis, p=2, dim=1)
+    # get z-axis (approach direction, vector gripper will move along to grasp)
+    # since we pass in approach point normals, need to flip them to get z-axis
+    z_axis = -sample_normal[geometry_mask]
 
     # NOTE: for our grasp rendering, we assume that x-axis is aligned with gripper-finger axis, NOT y-axis
     # so, we'll flip them here
@@ -56,7 +55,11 @@ def orthogonal_grasps(geometry_mask, depth_projection, sample_normal, des_normal
     x_axis = torch.cross(y_axis, z_axis, dim=1)
     x_axis = F.normalize(x_axis, p=2, dim=1)
 
-    gripper_position = gripper_dis_from_source.repeat(1, 3) * (-z_axis) + sample_pos[geometry_mask]
+    # gripper offset from approach points
+    gripper_offset = gripper_dis_from_source.repeat(1, 3) * (-z_axis)
+    gripper_position = gripper_offset + sample_pos[geometry_mask]
+
+    # create transform matrix
     transform_matrix = torch.cat((x_axis.unsqueeze(dim=-1), y_axis.unsqueeze(dim=-1),
                                     z_axis.unsqueeze(dim=-1), gripper_position.unsqueeze(dim=-1)), dim=-1)
     homo_agument = torch.as_tensor([0., 0., 0., 1.]).reshape(1, 1, 4).repeat(len(z_axis), 1, 1).to(des_normals.device)

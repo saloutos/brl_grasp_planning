@@ -34,10 +34,9 @@ spec = mujoco.MjSpec.from_file(scene_path)
 # CHOOSE TO LOAD YCB MESHES OR RANDOM PRIMITIVES?
 # load_random_grid_ycb(spec, 4)
 # load_random_grid_fixed_primitives(spec, 4)
-# load_objects_from_yaml(spec, 'object_test.yaml')
 # single object to grasp
-# load_objects_from_yaml(spec, "primitives/single_objects/fixed/cylinder_1.yaml", pos=[0,0,0.05], rpy=[0,0,0])
-load_objects_from_yaml(spec, 'primitives/collections/panda_graspable/scene_1.yaml')
+# load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_7.yaml", pos=[0,0,0.05], rpy=[0,0,0])
+load_objects_from_yaml(spec, 'primitives/collections/panda_graspable/scene_2.yaml')
 
 model = spec.compile()
 data = mujoco.MjData(model)
@@ -136,7 +135,7 @@ def capture_scene(viewer, model, data, cam_name, crop=True):
     # convert PC to world frame
     pcd_world = copy.deepcopy(pcd_cam).transform(cam_extrinsics)
     # crop PC based on bounding box in world frame
-    workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.4]))
+    workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.39]))
     pcd_world_crop = pcd_world.crop(workspace_bb)
     # get cropped point cloud in camera frame as well
     pcd_cam_crop = copy.deepcopy(pcd_world_crop).transform(np.linalg.inv(cam_extrinsics))
@@ -191,19 +190,19 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     render_toc = time.time() - renter_tic
 
     ### CONTACT GRASPNET ###
-    print('')
-    print('')
-    print('EVALUATING CONTACT GRASPNET')
-    # load grasp generation model
-    # TODO: clean up this yaml file
-    with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
-        cgn_config = yaml.safe_load(f)
-    cgn = ContactGraspNet(cgn_config)
-    # generate grasp candidates
-    # TODO: pass in grasp success threshold? take threshold from config file?
-    print('Generating Grasps...')
-    cgn_tic = time.time()
-    cgn_grasp_poses_world1, cgn_grasp_scores1, cgn_contact_pts1, cgn_grasp_widths1 = cgn.predict_scene_grasps(pcd_cam_crop, cam_extrinsics)
+    # print('')
+    # print('')
+    # print('EVALUATING CONTACT GRASPNET')
+    # # load grasp generation model
+    # # TODO: clean up this yaml file
+    # with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
+    #     cgn_config = yaml.safe_load(f)
+    # cgn = ContactGraspNet(cgn_config)
+    # # generate grasp candidates
+    # # TODO: pass in grasp success threshold? take threshold from config file?
+    # print('Generating Grasps...')
+    # cgn_tic = time.time()
+    # cgn_grasp_poses_world1, cgn_grasp_scores1, cgn_contact_pts1, cgn_grasp_widths1 = cgn.predict_scene_grasps(full_pcd_cam1, cam_extrinsics)
 
     # # rotate pcd_cam_crop by 90, 180, and 270
     # T_R90 = np.array([[0,-1,0,0],[1,0,0,0],[0,0,1,0],[0,0,0,1]])
@@ -221,26 +220,20 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     # cgn_grasp_poses_world3, cgn_grasp_scores3, cgn_contact_pts3, cgn_grasp_widths3 = cgn.predict_scene_grasps(pcd_cam_crop3, cam_extrinsics3)
     # cgn_grasp_poses_world4, cgn_grasp_scores4, cgn_contact_pts4, cgn_grasp_widths4 = cgn.predict_scene_grasps(pcd_cam_crop4, cam_extrinsics4)
 
-    cgn_toc = time.time() - cgn_tic
+    # cgn_toc = time.time() - cgn_tic
 
-    # TODO: add contact points to visualzation
-    # create point cloud with points, make colors bright red
-    # add to full_pcd_world
-    cgn_contact_pts1 += 0.0005
-    cgn_contact_pts1_pcd = o3d.geometry.PointCloud()
-    cgn_contact_pts1_pcd.points = o3d.utility.Vector3dVector(cgn_contact_pts1)
-    cgn_contact_pts1_pcd.colors = o3d.utility.Vector3dVector(np.array([[0,0,0]]*len(cgn_contact_pts1)))
-
-    o3d.visualization.draw_geometries([cgn_contact_pts1_pcd])
-
-    pcd_world_with_pts = pcd_world_crop + cgn_contact_pts1_pcd
+    # can also add contact points to visualzation
+    # cgn_contact_pts1 += 0.0005 # small displacement to avoid overlap with object
+    # cgn_contact_pts1_pcd = o3d.geometry.PointCloud()
+    # cgn_contact_pts1_pcd.points = o3d.utility.Vector3dVector(cgn_contact_pts1)
+    # cgn_contact_pts1_pcd.colors = o3d.utility.Vector3dVector(np.array([[0,0,0]]*len(cgn_contact_pts1)))
+    # pcd_world_with_pts = pcd_world_crop + cgn_contact_pts1_pcd
 
     # visualize grasps
-    visualize_grasps(pcd_world_with_pts, cgn_grasp_poses_world1, cgn_grasp_scores1,
-                    window_name = 'ContactGraspNet',
-                    plot_origin=True,
-                    gripper_openings=cgn_grasp_widths1)
-
+    # visualize_grasps(pcd_world_crop, cgn_grasp_poses_world1, cgn_grasp_scores1,
+    #                 window_name = 'ContactGraspNet',
+    #                 plot_origin=True,
+    #                 gripper_openings=cgn_grasp_widths1)
     # visualize_grasps(pcd_world_crop2, cgn_grasp_poses_world2, cgn_grasp_scores2,
     #                 window_name = 'ContactGraspNet2',
     #                 plot_origin=True,
@@ -255,7 +248,7 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     #                 gripper_openings=cgn_grasp_widths4)
 
     # also visualize grasps in mujoco
-    mjv_draw_grasps(viewer, cgn_grasp_poses_world1, rgba=[1,0,0, 0.25])
+    # mjv_draw_grasps(viewer, cgn_grasp_poses_world1, rgba=[1,0,0, 0.25])
     # mjv_draw_grasps(viewer, cgn_grasp_poses_world2, rgba=[0,1,0, 0.25])
     # mjv_draw_grasps(viewer, cgn_grasp_poses_world3, rgba=[0,0,1, 0.25])
     # mjv_draw_grasps(viewer, cgn_grasp_poses_world4, rgba=[0,0.7,1, 0.25])
@@ -266,24 +259,28 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
 
 
     # ### EDGE GRASP ###
-    # print('')
-    # print('')
-    # print('EVALUATING EDGE GRASP')
-    # # load model
-    # with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
-    #     edge_grasp_config = yaml.safe_load(f)
-    # edge_grasp = EdgeGraspNet(edge_grasp_config)
-    # # generate grasp candidates
-    # edge_tic = time.time()
-    # edge_grasp_poses_world, edge_grasp_scores, edge_grasp_widths = edge_grasp.predict_scene_grasps(pcd_world_crop)
-    # edge_toc = time.time() - edge_tic
-    # # visualize grasps
-    # # visualize_grasps(pcd_world_crop, edge_grasp_poses_world, edge_grasp_scores,
-    # #                 window_name = 'EdgeGrasp',
-    # #                 plot_origin=True,
-    # #                 gripper_openings=None)
-    # # also visualize grasps in mujoco
-    # mjv_draw_grasps(viewer, edge_grasp_poses_world, rgba=[1, 0.6, 0.1, 0.25])
+    print('')
+    print('')
+    print('EVALUATING EDGE GRASP')
+    # load model
+    with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
+        edge_grasp_config = yaml.safe_load(f)
+    edge_grasp = EdgeGraspNet(edge_grasp_config)
+    # generate grasp candidates
+    edge_tic = time.time()
+
+    edge_grasp_poses_world, edge_grasp_scores, edge_grasp_widths = edge_grasp.predict_scene_grasps(pcd_world_crop)
+
+    edge_toc = time.time() - edge_tic
+
+    # visualize grasps
+    visualize_grasps(pcd_world_crop, edge_grasp_poses_world, edge_grasp_scores,
+                    window_name = 'EdgeGrasp',
+                    plot_origin=True,
+                    gripper_openings=edge_grasp_widths)
+
+    # also visualize grasps in mujoco
+    mjv_draw_grasps(viewer, edge_grasp_poses_world, rgba=[1, 0.6, 0.1, 0.25])
 
     # ### VN-EDGE GRASP ###
     # # TODO: implement this
@@ -310,8 +307,8 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     # mjv_draw_grasps(viewer, gsnet_grasp_poses_world, rgba=[0.0, 1.0, 0.0, 0.25])
 
 
-    # ### GIGA PACKED? ###
-    # ### GIGA PILE? ###
+    ### GIGA PACKED? ###
+    ### GIGA PILE? ###
     # print('')
     # print('')
     # print('EVALUATING GIGA')
@@ -345,14 +342,14 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     print('')
     print('Evaluation times:')
     print('Rendering: {:.3f} seconds.'.format(render_toc))
-    print('ContactGraspNet: {:.3f} seconds.'.format(cgn_toc))
-    # print('EdgeGraspNet: {:.3f} seconds.'.format(edge_toc))
+    # print('ContactGraspNet: {:.3f} seconds.'.format(cgn_toc))
+    print('EdgeGraspNet: {:.3f} seconds.'.format(edge_toc))
     # print('Graspness: {:.3f} seconds.'.format(gsnet_toc))
     # print('GIGA: {:.3f} seconds.'.format(giga_toc))
     # create plotting window
     # vis_grasps_many_planners(full_pcd_world,
-    #                         [cgn_grasp_poses_world], #, edge_grasp_poses_world, gsnet_grasp_poses_world, giga_grasp_poses_world],
-    #                         [(1,0,0)]) #, (1, 0.6, 0.1), (0,1,0), (0,0.7,1)])
+    #                         [cgn_grasp_poses_world1, edge_grasp_poses_world, gsnet_grasp_poses_world, giga_grasp_poses_world],
+    #                         [(1,0,0), (1, 0.6, 0.1), (0,1,0), (0,0.7,1)])
 
     while viewer.is_running(): pass
 

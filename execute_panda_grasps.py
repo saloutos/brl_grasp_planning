@@ -40,10 +40,10 @@ spec = mj.MjSpec.from_file(scene_path)
 
 # load a scene from a yaml file
 # load_objects_from_yaml(spec, 'primitives/collections/scene_1.yaml')
-#load_objects_from_yaml(spec, 'primitives/collections/panda_graspable/scene_0.yaml')
+load_objects_from_yaml(spec, 'primitives/collections/panda_graspable/scene_0.yaml')
 
 # single object to grasp
-load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_7.yaml", pos=[0,0,0.08], rpy=[0,0,0])
+# load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_7.yaml", pos=[0,0,0.08], rpy=[0,0,0])
 
 mj_model = spec.compile()
 
@@ -61,8 +61,6 @@ controller = PandaGrabLiftFSM()
 # Contact Grasp Net
 with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
     cgn_config = yaml.safe_load(f)
-cgn_config['OPTIMIZER']['batch_size'] = int(1)
-cgn_config['DATA']['checkpoint_path'] = 'planners/contact_graspnet/checkpoints/model.pt'
 CGN = ContactGraspNet(cgn_config)
 
 # Edge Grasp
@@ -165,7 +163,7 @@ try:
                 plan_start = time.time()
 
                 ### TODO: choose planner here!!!
-                grasp_poses_world, grasp_scores, grasp_widths = CGN.predict_scene_grasps(pcd_cam, cam_extrinsics)
+                grasp_poses_world, grasp_scores, contact_pts, grasp_widths = CGN.predict_scene_grasps(pcd_cam, cam_extrinsics)
                 # grasp_poses_world, grasp_scores, grasp_widths = EDGE.predict_scene_grasps(pcd_world)
                 # grasp_poses_world, grasp_scores, grasp_widths = GSN.predict_scene_grasps(pcd_cam, cam_extrinsics)
                 # NOTE: for GIGA, choose how many camera views to use

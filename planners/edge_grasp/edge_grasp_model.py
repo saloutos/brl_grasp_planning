@@ -11,6 +11,7 @@ from torch.backends import cudnn
 from torch.nn import Sequential, Linear, ReLU
 import torch
 import open3d as o3d
+import time
 
 from .edge_grasp_utils import *
 
@@ -42,15 +43,14 @@ class EdgeGraspNet:
 
         # pre-process point clouds
         # TODO: could put these filtering parameters into config file
-        pc_input, ind = pc_input.remove_statistical_outlier(nb_neighbors=30, std_ratio=1.0)
-        pc_input, ind = pc_input.remove_radius_outlier(nb_points=30, radius=0.03)
+        # pc_input, ind = pc_input.remove_statistical_outlier(nb_neighbors=10, std_ratio=2.0) # remove points that are further away from their neighbores than average
+        pc_input, ind = pc_input.remove_radius_outlier(nb_points=30, radius=0.03) # remove points that have less than nb_points in radius
         pc_input.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.04, max_nn=30))
-        pc_input.orient_normals_consistent_tangent_plane(30)
+        # pc_input.orient_normals_consistent_tangent_plane(30) # this takes like 1 second
         # orient normals towards camera to make sure they don't point inside objects
         pc_input.orient_normals_to_align_with_direction(orientation_reference=np.array([0, -0.4, 0.8]))
-
-        # downsample based on voxel size
-        pc_input = pc_input.voxel_down_sample(voxel_size=0.0045)
+        # finally, downsample based on voxel size
+        pc_input = pc_input.voxel_down_sample(voxel_size=0.004)
 
         # sample edges
 
@@ -61,64 +61,83 @@ class EdgeGraspNet:
         normals = torch.from_numpy(normals).to(torch.float32).to(self.device)
 
         # sample a limited set of approach points
+        # takes about 30ms for sampling 32 pts from roughly 10k
         fps_sample = FarthestSamplerTorch()
         _, sample = fps_sample(pos,self.sample_number)
         sample = torch.as_tensor(sample).to(torch.long).reshape(-1).to(self.device)
         sample = torch.unique(sample,sorted=True)
 
         # for each approach point, get local point cloud
-        sample_pos = pos[sample, :]
+        sample_pos = pos[sample, :] # these are sampled approach points
+        # TODO: ball radius should be in config file?
         radius_p_batch_index = radius(pos, sample_pos, r=0.05, max_num_neighbors=1024)
-        radius_p_index = radius_p_batch_index[1, :]
-        radius_p_batch = radius_p_batch_index[0, :]
+        radius_p_batch = radius_p_batch_index[0, :] # 1D tensor of batch indices (i.e. approach point number)
+        radius_p_index = radius_p_batch_index[1, :] # 1D tensor of point indices (i.e. point idx in original point cloud for matching approach point)
+
+        # repeat approach points and approach point indices for each point in the local point clouds
         sample_pos = torch.cat(
             [sample_pos[i, :].repeat((radius_p_batch == i).sum(), 1) for i in range(len(sample))],
             dim=0)
         sample_copy = sample.clone().unsqueeze(dim=-1)
         sample_index = torch.cat(
             [sample_copy[i, :].repeat((radius_p_batch == i).sum(), 1) for i in range(len(sample))], dim=0)
+
+        # edges are pairs of indices of approach points and contact points, taken from original full point cloud
         edges = torch.cat((sample_index, radius_p_index.unsqueeze(dim=-1)), dim=1)
         all_edge_index = torch.arange(0,len(edges)).to(self.device)
 
         # get potential contact points, their normals, and the vectors from approach points to contact points
-        des_pos = pos[radius_p_index, :]
-        des_normals = normals[radius_p_index, :]
-        relative_pos = des_pos - sample_pos
-        relative_pos_normalized = F.normalize(relative_pos, p=2, dim=1)
+        des_pos = pos[radius_p_index, :] # contact points
+        des_normals = normals[radius_p_index, :] # normals at contact points
+        relative_pos = des_pos - sample_pos # vectors from approach points to contact points
+        relative_pos_normalized = F.normalize(relative_pos, p=2, dim=1) # unit vectors from approach points to contact points
+
+        print('Number of potential edges: ', len(edges))
 
         # filter edges
+        # NOTE: this is before any network evaluation
 
-        # only record approach vectors with a angle mask
+        # calculate x-axis for gripper (orthogonal to approach direction and gripper width direction)
+        # also orthogonal to relative_pos vector and normal vector
         x_axis = torch.linalg.cross(des_normals, relative_pos_normalized)
         x_axis = F.normalize(x_axis, p=2, dim=1)
-        # calculate edge approach directions
+        # calculate edge approach directions (orthogonal to x-axis and normal)
+        # NOTE: this is the OPPOSITE of the direction the gripper will move in to grasp the edge (it points out of the back of the gripper)
         valid_edge_approach = torch.linalg.cross(x_axis, des_normals)
         valid_edge_approach = F.normalize(valid_edge_approach, p=2, dim=1)
         valid_edge_approach = -valid_edge_approach
-
-        # filter on approach direction...don't want to approach from "below"
+        # filter on approach direction by taking dot product with world z-axis
+        # don't want to approach from too far "below" horizontal
         up_dot_vals = torch.einsum('ik,k->i', valid_edge_approach, torch.tensor([0., 0., 1.]).to(self.device))
         up_dot_mask = (up_dot_vals > self._edge_grasp_cfg['EVAL']['up_dot_th'])
+        print('Up dot:', up_dot_mask.sum())
+
         # make sure contact point and approach point aren't too far from each other
         relative_norm = torch.linalg.norm(relative_pos, dim=-1)
-        geometry_mask = torch.logical_and(up_dot_mask,
-                                            relative_norm > self._edge_grasp_cfg['EVAL']['rel_norm_min'])
-        geometry_mask = torch.logical_and(relative_norm < self._edge_grasp_cfg['EVAL']['rel_norm_max'],
-                                            geometry_mask)
+        rel_norm_mask = torch.logical_and(relative_norm > self._edge_grasp_cfg['EVAL']['rel_norm_min'],
+                                            relative_norm < self._edge_grasp_cfg['EVAL']['rel_norm_max'])
+        print('Rel norm:', rel_norm_mask.sum())
+
         # calculate grasp depth between approach point and contact points
         # contact point should be further than approach point, but not too far
+        # TODO: check if this is correct way to take dot product?
         depth_proj = -torch.sum(relative_pos * valid_edge_approach, dim=-1)
         depth_proj_mask =   torch.logical_and(depth_proj > self._edge_grasp_cfg['EVAL']['depth_proj_min'],
                                                 depth_proj < self._edge_grasp_cfg['EVAL']['depth_proj_max'])
-        geometry_mask =     torch.logical_and(geometry_mask, depth_proj_mask)
+        print('Depth proj:', depth_proj_mask.sum())
 
-        # build grasp poses from candidate edges
-        pose_candidates = orthogonal_grasps(geometry_mask, depth_proj, valid_edge_approach, des_normals,
-                                            sample_pos)
+        # build geometry mask
+        geometry_mask = torch.all(torch.stack([up_dot_mask, rel_norm_mask, depth_proj_mask]), dim=0)
+        print('All geometry:', geometry_mask.sum())
+
         # check table collisions based on z height
         if self._edge_grasp_cfg['EVAL']['check_gripper_collisions']:
+            # first, need to build grasp poses from candidate edges
+            tic = time.time()
+            pose_candidates = orthogonal_grasps(geometry_mask, depth_proj, valid_edge_approach, des_normals, sample_pos)
             table_grasp_mask = get_gripper_points_mask(pose_candidates, z_threshold=self._edge_grasp_cfg['EVAL']['gripper_z_th'])
             geometry_mask[geometry_mask == True] = table_grasp_mask
+            print('All geometry after table collisions:', geometry_mask.sum())
 
         # get final edges
         edge_sample_index = all_edge_index[geometry_mask]
@@ -127,8 +146,10 @@ class EdgeGraspNet:
         # actually evaluate model for these edges
         max_num_edges = self._edge_grasp_cfg['EVAL']['max_edges']
         if len(edge_sample_index) > 0:
+            # if there are too many, randomly sample
             if len(edge_sample_index) > max_num_edges:
                 edge_sample_index = edge_sample_index[torch.randperm(len(edge_sample_index))[:max_num_edges]]
+            # build dataset for batch processing
             edge_sample_index, _ = torch.sort(edge_sample_index)
             data = Data(pos=pos, normals=normals, sample=sample, radius_p_index=radius_p_index,
                         ball_batch=radius_p_batch,
@@ -137,14 +158,20 @@ class EdgeGraspNet:
                         relative_pos=relative_pos[edge_sample_index, :],
                         depth_proj=depth_proj[edge_sample_index])
             data = data.to(self.device)
+            # evaluate model 
+            # things get reordered in batch, so returns values in new order
             score, depth_projection, approaches, sample_pos, des_normals = self.model.act(data)
 
             # select grasps based on threshold
             all_scores = F.sigmoid(score)
             grasp_mask = (all_scores > self._edge_grasp_cfg['EVAL']['selection_th'])
-
-            masked_poses = orthogonal_grasps(grasp_mask, depth_projection, approaches, des_normals, sample_pos)
             masked_scores = all_scores[grasp_mask]
+            print('Number of grasps selected: ', len(masked_scores))
+
+            # TODO: check that at least one grasp is selected?
+
+            # build new grasp poses
+            masked_poses = orthogonal_grasps(grasp_mask, depth_projection, approaches, des_normals, sample_pos)
 
             # calculate grasp widths
             # TODO: what is going on here...why is 0.016 added?
@@ -157,12 +184,12 @@ class EdgeGraspNet:
             grasp_scores = masked_scores.detach().cpu().numpy()
             gripper_widths = widths.detach().cpu().numpy()
 
-            # TODO: why was original code sampling grasp point here?
+            # TODO: limit number of grasps returned?
+
 
         else:
             grasp_scores, gripper_widths = [0], [0]
             pred_grasps = np.expand_dims(np.eye(4), axis=0)
-            print('No candidates without collisions.')
 
         return pred_grasps, grasp_scores, gripper_widths
 

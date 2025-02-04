@@ -361,7 +361,7 @@ class PandaGripperPlatform:
         # convert PC to world frame
         pcd_world = copy.deepcopy(pcd_cam).transform(cam_extrinsics)
         # crop PC based on bounding box in world frame
-        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.225]), np.eye(3), np.array([0.7, 0.6, 0.4]))
+        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.39]))
         pcd_world_crop = pcd_world.crop(workspace_bb)
         # get cropped point cloud in camera frame as well
         pcd_cam_crop = copy.deepcopy(pcd_world_crop).transform(np.linalg.inv(cam_extrinsics))
