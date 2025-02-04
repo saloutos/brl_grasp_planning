@@ -20,7 +20,7 @@ class ContactGraspNet:
         self._contact_grasp_cfg = cfg
 
         # TODO: move this to where it is actually used?
-        self._num_input_points = self._contact_grasp_cfg['DATA']['raw_num_points'] if 'raw_num_points' in self._contact_grasp_cfg['DATA'] else self._contact_grasp_cfg['DATA']['num_point']
+        self._num_input_points = self._contact_grasp_cfg['DATA']['num_input_points']
 
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -43,68 +43,6 @@ class ContactGraspNet:
         self.model.load_state_dict(model_state_dict)
 
     # run model for entire scene with segmented point clouds
-    def predict_scene_grasps_segments(self, pcd_cam, pc_segments={}, local_regions=False, filter_grasps=False, forward_passes=1, use_cam_boxes=True):
-        """
-        Predict num_point grasps on a full point cloud or in local box regions around point cloud segments.
-
-        Arguments:
-            sess {tf.Session} -- Tensorflow Session
-            pc_full {np.ndarray} -- Nx3 full scene point cloud
-
-        Keyword Arguments:
-            pc_segments {dict[int, np.ndarray]} -- Dict of Mx3 segmented point clouds of objects of interest (default: {{}})
-            local_regions {bool} -- crop 3D local regions around object segments for prediction (default: {False})
-            filter_grasps {bool} -- filter grasp contacts such that they only lie within object segments (default: {False})
-            forward_passes {int} -- Number of forward passes to run on each point cloud. (default: {1})
-
-        Returns:
-            [np.ndarray, np.ndarray, np.ndarray, np.ndarray] -- pred_grasps_cam, scores, contact_pts, gripper_openings
-        """
-        pc_full = np.asarray(pcd_cam.points)
-        pred_grasps_cam, scores, contact_pts, gripper_openings = {}, {}, {}, {}
-        # Predict grasps in local regions or full pc
-        if local_regions:
-            print('using local regions')
-            if use_cam_boxes:
-                pc_regions, _ = self.extract_3d_cam_boxes(pc_full, pc_segments, min_size=0.2)
-            else:
-                pc_regions = self.filter_pc_segments(pc_segments)
-            for k, pc_region in pc_regions.items():
-                pred_grasps_cam[k], scores[k], contact_pts[k], gripper_openings[k] = self.predict_grasps(pc_region, convert_cam_coords=True, forward_passes=forward_passes)
-        else:
-            print('using full pc')
-            pc_full = regularize_pc_point_count(pc_full, self._contact_grasp_cfg['DATA']['raw_num_points'])
-            pred_grasps_cam[-1], scores[-1], contact_pts[-1], gripper_openings[-1] = self.predict_grasps(pc_full, convert_cam_coords=True, forward_passes=forward_passes)
-            print('Generated {} grasps'.format(len(pred_grasps_cam[-1])))
-        # Filter grasp contacts to lie within object segment
-        if filter_grasps:
-            segment_keys = contact_pts.keys() if local_regions else pc_segments.keys()
-            print(segment_keys)
-            for k in segment_keys:
-                print(k)
-                j = k if local_regions else -1
-                if np.any(pc_segments[k]) and np.any(contact_pts[j]):
-                    print('filtering')
-                    segment_idcs = self.filter_segment(contact_pts[j], pc_segments[k], thres=self._contact_grasp_cfg['TEST']['filter_thres'])
-
-                    pred_grasps_cam[k] = pred_grasps_cam[j][segment_idcs]
-                    scores[k] = scores[j][segment_idcs]
-                    contact_pts[k] = contact_pts[j][segment_idcs]
-                    try:
-                        print('tried gripper openings')
-                        gripper_openings[k] = gripper_openings[j][segment_idcs]
-                    except:
-                        print('skipped gripper openings {}'.format(gripper_openings[j]))
-
-                    if local_regions and np.any(pred_grasps_cam[k]):
-                        print('Generated {} grasps for object {}'.format(len(pred_grasps_cam[k]), k))
-                else:
-                    print('skipping obj {} since  np.any(pc_segments[k]) {} and np.any(contact_pts[j]) is {}'.format(k, np.any(pc_segments[k]), np.any(contact_pts[j])))
-        # return grasps, scores, contact points, and grasp widths
-        return pred_grasps_cam, scores, contact_pts, gripper_openings
-
-
-    # run model for entire scene with segmented point clouds
     def predict_scene_grasps(self, pcd_cam, cam_extrinsics=None):
         """
         Predict num_point grasps on a full point cloud or in local box regions around point cloud segments.
@@ -123,26 +61,26 @@ class ContactGraspNet:
             [np.ndarray, np.ndarray, np.ndarray, np.ndarray] -- pred_grasps_cam, scores, contact_pts, gripper_openings
         """
         pc_full = np.asarray(pcd_cam.points)
-        # TODO: play around with regularizing PC, inputs to predict grasps
-        pc_full = regularize_pc_point_count(pc_full, self._contact_grasp_cfg['DATA']['raw_num_points'])
-        pred_grasps_cam, scores, contact_pts, gripper_openings = self.predict_grasps(pc_full, convert_cam_coords=True, forward_passes=1)
+        pred_grasps_cam, scores, contact_pts, gripper_openings = self.predict_grasps(pc_full)
         print('Generated {} grasps'.format(len(pred_grasps_cam)))
+        # TODO: filter grasps to only lie within object segments?
 
         if cam_extrinsics is not None:
             # convert to world frame, and return grasps in world frame
             # put grasps in world frame
             pred_grasps_world = np.zeros_like(pred_grasps_cam)
+            contact_pts_world = np.zeros_like(contact_pts)
             for i,g in enumerate(pred_grasps_cam):
                 pred_grasps_world[i,:4,:4] = np.matmul(cam_extrinsics, g)
+                contact_pts_world[i] = np.matmul(cam_extrinsics[:3,:3], contact_pts[i]) + cam_extrinsics[:3,3]
             # return grasps, scores, contact points, and grasp widths
-            return pred_grasps_world, scores, gripper_openings
+            return pred_grasps_world, scores, contact_pts_world, gripper_openings
         else:
             # return grasps, scores, contact points, and grasp widths
-            return pred_grasps_cam, scores, gripper_openings
-
+            return pred_grasps_cam, scores, contact_pts, gripper_openings
 
     # main function for evaluating model
-    def predict_grasps(self, pc, constant_offset=False, convert_cam_coords=True, forward_passes=1):
+    def predict_grasps(self, pc, convert_cam_coords=True, forward_passes=1):
         """
         Predict raw grasps on point cloud
 
@@ -154,8 +92,44 @@ class ContactGraspNet:
         :returns: (pred_grasps_cam, pred_scores, pred_points, gripper_openings) Predicted grasps/scores/contact-points/gripper-openings
         """
 
+        # regularize number of points in point cloud
         # Convert point cloud coordinates from OpenCV to internal coordinates (x left, y up, z front)
-        pc, pc_mean = preprocess_pc_for_inference(pc.squeeze(), self._num_input_points, return_mean=True, convert_to_internal_coords=convert_cam_coords)
+        # print('Total points:', len(pc))
+        # pc, pc_mean = preprocess_pc_for_inference(pc.squeeze(),
+        #                                         self._contact_grasp_cfg['DATA']['num_input_points'],
+        #                                         return_mean=True,
+        #                                         use_farthest_point=False, # TODO:  farthest point sampling shouldn't take this long!! if we use tensors, can copy function here
+        #                                         convert_to_internal_coords=convert_cam_coords)
+
+        # PULLING OUT PREPROCESS FUNCTION HERE
+        # regularize number of points in point cloud
+        use_farthest_point = False
+        if pc.shape[0] > self._contact_grasp_cfg['DATA']['num_input_points']:
+            if use_farthest_point:
+                # TODO: this is still quite slow!
+                # create tensor from pc
+                pc_tensor = torch.from_numpy(pc).type(torch.float32).to(self.device)
+                pc_tensor = pc_tensor.unsqueeze(0)
+                # get farthest points
+                center_indexes = farthest_point_sample(pc_tensor, self._contact_grasp_cfg['DATA']['num_input_points']).squeeze().to('cpu').numpy()
+                # _, center_indexes = farthest_points(pc, self._contact_grasp_cfg['DATA']['num_input_points'], distance_by_translation_point, return_center_indexes=True)
+            else:
+                center_indexes = np.random.choice(range(pc.shape[0]), size=self._contact_grasp_cfg['DATA']['num_input_points'], replace=False)
+            pc = pc[center_indexes, :]
+        else:
+            required = self._contact_grasp_cfg['DATA']['num_input_points'] - pc.shape[0]
+            if required > 0:
+                index = np.random.choice(range(pc.shape[0]), size=required)
+                pc = np.concatenate((pc, pc[index, :]), axis=0)
+
+        # Convert point cloud coordinates from OpenCV to internal coordinates (x left, y up, z front)
+        pc[:,:2] *= -1
+        # calculate mean of point cloud
+        pc_mean = np.mean(pc, 0)
+        # subtract mean
+        pc -= np.expand_dims(pc_mean, 0)
+
+
 
         if len(pc.shape) == 2:
             pc_batch = pc[np.newaxis,:,:]
@@ -182,84 +156,31 @@ class ContactGraspNet:
         # uncenter grasps
         pred_grasps_cam[:,:3, 3] += pc_mean.reshape(-1,3)
         pred_points[:,:3] += pc_mean.reshape(-1,3)
-        if constant_offset:
-            offset_pred = np.array([[self._contact_grasp_cfg['DATA']['gripper_width']-self._contact_grasp_cfg['TEST']['extra_opening']]*self._contact_grasp_cfg['DATA']['num_point']])
+        # limit gripper openings
         gripper_openings = np.minimum(offset_pred + self._contact_grasp_cfg['TEST']['extra_opening'], self._contact_grasp_cfg['DATA']['gripper_width'])
-        with_replacement = self._contact_grasp_cfg['TEST']['with_replacement'] if 'with_replacement' in self._contact_grasp_cfg['TEST'] else False
+
         selection_idcs = self.select_grasps(pred_points[:,:3], pred_scores,
                                             self._contact_grasp_cfg['TEST']['max_farthest_points'],
                                             self._contact_grasp_cfg['TEST']['num_samples'],
                                             self._contact_grasp_cfg['TEST']['first_thres'],
-                                            self._contact_grasp_cfg['TEST']['second_thres'] if 'second_thres' in self._contact_grasp_cfg['TEST'] else self._contact_grasp_cfg['TEST']['first_thres'],
+                                            self._contact_grasp_cfg['TEST']['second_thres'],
                                             with_replacement=self._contact_grasp_cfg['TEST']['with_replacement'])
+
+        # if no grasps are selected, just select the one with the highest score
         if not np.any(selection_idcs):
-            selection_idcs=np.array([], dtype=np.int32)
-        if 'center_to_tip' in self._contact_grasp_cfg['TEST'] and self._contact_grasp_cfg['TEST']['center_to_tip']:
-            pred_grasps_cam[:,:3, 3] -= pred_grasps_cam[:,:3,2]*(self._contact_grasp_cfg['TEST']['center_to_tip']/2)
+            # selection_idcs=np.array([], dtype=np.int32)
+            selection_idcs = np.array([np.argmax(pred_scores)])
+
         # convert back to opencv coordinates
         if convert_cam_coords:
             pred_grasps_cam[:,:2, :] *= -1
             pred_points[:,:2] *= -1
 
         # return grasps, scores, points, and widths, based on grasp selection
-        return pred_grasps_cam[selection_idcs], pred_scores[selection_idcs], pred_points[selection_idcs].squeeze(), gripper_openings[selection_idcs].squeeze()
+        return pred_grasps_cam[selection_idcs], pred_scores[selection_idcs], pred_points[selection_idcs], gripper_openings[selection_idcs].squeeze()
 
     # helper functions
-    def filter_segment(self, contact_pts, segment_pc, thres=0.00001):
-        """
-        Filter grasps to obtain contacts on specified point cloud segment
-
-        :param contact_pts: Nx3 contact points of all grasps in the scene
-        :param segment_pc: Mx3 segmented point cloud of the object of interest
-        :param thres: maximum distance in m of filtered contact points from segmented point cloud
-        :returns: Contact/Grasp indices that lie in the point cloud segment
-        """
-        filtered_grasp_idcs = np.array([],dtype=np.int32)
-        if contact_pts.shape[0] > 0 and segment_pc.shape[0] > 0:
-            try:
-                dists = contact_pts[:,:3].reshape(-1,1,3) - segment_pc.reshape(1,-1,3)
-                min_dists = np.min(np.linalg.norm(dists,axis=2),axis=1)
-                filtered_grasp_idcs = np.where(min_dists<thres)
-            except:
-                pass
-        return filtered_grasp_idcs
-
-    def extract_3d_cam_boxes(self, full_pc, pc_segments, min_size=0.3, max_size=0.6):
-        """
-        Extract 3D bounding boxes around the pc_segments for inference to create
-        dense and zoomed-in predictions but still take context into account.
-
-        :param full_pc: Nx3 scene point cloud
-        :param pc_segments: Mx3 segmented point cloud of the object of interest
-        :param min_size: minimum side length of the 3D bounding box
-        :param max_size: maximum side length of the 3D bounding box
-        :returns: (pc_regions, obj_centers) Point cloud box regions and their centers
-        """
-        pc_regions = {}
-        obj_centers = {}
-        for i in pc_segments:
-            pc_segments[i] = reject_median_outliers(pc_segments[i], m=0.4, z_only=False)
-            if np.any(pc_segments[i]):
-                max_bounds = np.max(pc_segments[i][:,:3], axis=0)
-                min_bounds = np.min(pc_segments[i][:,:3], axis=0)
-                obj_extent = max_bounds - min_bounds
-                obj_center = min_bounds + obj_extent/2
-                # cube size is between 0.3 and 0.6 depending on object extents
-                size = np.minimum(np.maximum(np.max(obj_extent)*2, min_size), max_size)
-                print('Extracted Region Cube Size: ', size)
-                partial_pc = full_pc[np.all(full_pc > (obj_center - size/2), axis=1) & np.all(full_pc < (obj_center + size/2),axis=1)]
-                if np.any(partial_pc):
-                    partial_pc = regularize_pc_point_count(partial_pc, self._contact_grasp_cfg['DATA']['raw_num_points'], use_farthest_point=self._contact_grasp_cfg['DATA']['use_farthest_point'])
-                    pc_regions[i] = partial_pc
-                    obj_centers[i] = obj_center
-        return pc_regions, obj_centers
-
-    def filter_pc_segments(self, pc_segments):
-        for i in pc_segments:
-            pc_segments[i] = reject_median_outliers(pc_segments[i], m=0.4, z_only=False)
-        return pc_segments
-
-    def select_grasps(self, contact_pts, contact_conf, max_farthest_points = 150, num_grasps = 200, first_thres = 0.25, second_thres = 0.2, with_replacement=False):
+    def select_grasps(self, contact_pts, contact_conf, max_farthest_points=150, num_grasps=200, first_thres=0.25, second_thres=0.2, with_replacement=False):
         """
         Select subset of num_grasps by contact confidence thresholds and farthest contact point sampling. 
 
@@ -285,7 +206,11 @@ class ContactGraspNet:
         contact_pts = contact_pts.squeeze()
 
         conf_idcs_greater_than = np.nonzero(grasp_conf > first_thres)[0]
-        _, center_indexes = farthest_points(contact_pts[conf_idcs_greater_than,:3], np.minimum(max_farthest_points, len(conf_idcs_greater_than)), distance_by_translation_point, return_center_indexes = True)
+        print("Number of grasps with confidence > first_thres: ", len(conf_idcs_greater_than))
+        _, center_indexes = farthest_points(contact_pts[conf_idcs_greater_than,:3],
+                                            np.minimum(max_farthest_points, len(conf_idcs_greater_than)),
+                                            distance_by_translation_point,
+                                            return_center_indexes=True)
 
         remaining_confidences = np.setdiff1d(np.arange(len(grasp_conf)), conf_idcs_greater_than[center_indexes])
         sorted_confidences = np.argsort(grasp_conf)[::-1]
@@ -299,11 +224,11 @@ class ContactGraspNet:
                 selection_idcs.append(conf_idcs_greater_than[j%len(conf_idcs_greater_than)])
                 j+=1
             selection_idcs = np.array(selection_idcs)
-
         else:
             remaining_idcs = sorted_remaining_confidence_idcs[:num_grasps-len(conf_idcs_greater_than[center_indexes])]
             remaining_conf_idcs_greater_than = np.nonzero(grasp_conf[remaining_idcs] > second_thres)[0]
             selection_idcs = np.union1d(conf_idcs_greater_than[center_indexes], remaining_idcs[remaining_conf_idcs_greater_than])
+
         return selection_idcs
 
 
@@ -442,12 +367,6 @@ class ContactGraspnetModel(nn.Module):
 
     def forward(self, point_cloud):
 
-        # TODO: check if this is still necessary
-        # expensive, rather use random only
-        if 'raw_num_points' in self.data_config and self.data_config['raw_num_points'] != self.data_config['ndataset_points']:
-            raise NotImplementedError
-
-        # TODO: check if this is still necessary
         # Convert from tf to torch ordering
         point_cloud = torch.transpose(point_cloud, 1, 2) # Now we have batch x channels (3 or 6) x num_points
 
