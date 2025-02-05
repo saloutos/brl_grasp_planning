@@ -38,9 +38,19 @@ class GraspnessNet:
         # ready to evaluate
         self.model.eval()
 
-    def predict_scene_grasps(self, pcd_cam, cam_extrinsics=None):
+    def predict_scene_grasps(self, pcd_world, cam_extrinsics):
 
         # some pre-processing
+        # crop PC based on bounding box in world frame
+        # TODO: put this box size in config?
+        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.39]))
+        pcd_world = pcd_world.crop(workspace_bb)
+        # get cropped point cloud in camera frame as well
+        pcd_cam = copy.deepcopy(pcd_world).transform(np.linalg.inv(cam_extrinsics))
+        # TODO: downsample point cloud? put this voxel size in config?
+        pcd_cam = pcd_cam.voxel_down_sample(voxel_size=0.005)
+        # print('Downsampled point cloud to {} points'.format(len(pcd_cam.points)))
+
         pc = np.asarray(pcd_cam.points)
         data_dict = self.sample_points(pc)
 
@@ -59,6 +69,7 @@ class GraspnessNet:
             grasp_preds = pred_decode(end_points)
         # return the predictions
         preds = grasp_preds[0].detach().cpu().numpy()
+        # print('Initial grasp list has %d grasps.' % len(preds))
 
         # Filtering grasp poses for real-world execution.
         # The first mask preserves the grasp poses that are within a 30-degree angle with the vertical pose and have a width of less than 9cm.
@@ -67,30 +78,36 @@ class GraspnessNet:
         # workspace_mask = (preds[:,13] > -0.20) & (preds[:,13] < 0.21) & (preds[:,14] > -0.06) & (preds[:,14] < 0.18) & (preds[:,15] > 0.63) 
         # preds = preds[mask & workspace_mask]
 
+        # print('After filtering, grasp list has %d grasps.' % len(preds))
+
         # if len(preds) == 0:
         #         print('No grasp detected after masking')
         #         return
 
         gg = GraspGroup(preds)
-        # collision detection
-        collision_thresh = 0 # TODO: put this in config yaml
-        voxel_size_cd = 0.01 # TODO: config yaml
-        # TODO: will need to do this in world frame?
+        # collision detection bewtween gripper and point cloud
+        collision_thresh = 0.01 # TODO: put this in config yaml
+        voxel_size_cd = 0.005 # TODO: config yaml
+        approach_dist = 0.05 # TODO: config yaml
         if collision_thresh > 0:
             cloud = data_dict['point_clouds']
             mfcdetector = ModelFreeCollisionDetector(cloud, voxel_size=voxel_size_cd)
-            collision_mask = mfcdetector.detect(gg, approach_dist=0.05, collision_thresh=collision_thresh)
+            collision_mask = mfcdetector.detect(gg, approach_dist=approach_dist, collision_thresh=collision_thresh)
             gg = gg[~collision_mask]
 
-        # TODO: what is this?
+        print('After collision detection, grasp list has %d grasps.' % gg.__len__())
+
+        # apply NMS to remove redundant grasps
+        # then sort by scores
         gg = gg.nms()
+        # print('After NMS, grasp list has %d grasps.' % gg.__len__())
         gg = gg.sort_by_score()
         # trim list?
         # TODO: put this limit in config file
         num_grasp_limit = 100
         if gg.__len__() > num_grasp_limit:
-            print('Trimming final grasp list to %d.' % num_grasp_limit)
             gg = gg[:num_grasp_limit]
+        print('Final grasp list has %d grasps.' % gg.__len__())
 
         # from grippers, get grasp poses and gripper widths
         # TODO: need to swap some axes here, since grasp frame is different than our baseline CGN parameterization
@@ -109,20 +126,13 @@ class GraspnessNet:
         # return pred_grasp_array, gg.scores, gg.widths
         scores = np.asarray(gg.scores)
         gripper_openings = np.asarray(gg.widths)
-        if cam_extrinsics is not None:
-            # convert to world frame, and return grasps in world frame
-            # put grasps in world frame
-            pred_grasps_world = np.zeros_like(pred_grasp_array)
-            for i,g in enumerate(pred_grasp_array):
-                pred_grasps_world[i,:4,:4] = np.matmul(cam_extrinsics, g)
-            # return grasps, scores, and grasp widths
-            return pred_grasps_world, scores, gripper_openings
-        else:
-            # return in camera frame
-            # return grasps, scores, and grasp widths
-            return pred_grasp_array, scores, gripper_openings
-
-
+        # convert to world frame, and return grasps in world frame
+        # put grasps in world frame
+        pred_grasps_world = np.zeros_like(pred_grasp_array)
+        for i,g in enumerate(pred_grasp_array):
+            pred_grasps_world[i,:4,:4] = np.matmul(cam_extrinsics, g)
+        # return grasps, scores, and grasp widths
+        return pred_grasps_world, scores, gripper_openings, pcd_world
 
 
     def sample_points(self, masked_pc):

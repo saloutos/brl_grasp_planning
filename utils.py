@@ -492,7 +492,7 @@ def visualize_grasps(pcd_cam, pred_grasps_cam, scores, window_name='Open3D', plo
     # find best grasp
     best_grasp_idx = np.argmax(scores)
     best_grasp_complement_idx = np.arange(len(scores)) != best_grasp_idx
-    print('Best grasp:', best_grasp_idx)
+    # print('Best grasp:', best_grasp_idx)
     draw_grasps(vis, [pred_grasps_cam[best_grasp_idx,:,:]], np.eye(4), colors=[(1, 0, 0)], gripper_openings=[gripper_openings[best_grasp_idx]])
 
     # plot the rest of the grasps using colormap (still use best grasp to set max of colormap)

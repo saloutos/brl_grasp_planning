@@ -181,6 +181,12 @@ try:
 
                 plan_time = time.time() - plan_start
 
+                # vis = o3d.visualization.Visualizer()
+                # vis.create_window()
+                # vis.add_geometry(pcd_world_out)
+                # vis.run()
+                # vis.destroy_window()
+
                 best_grasp = np.argmax(grasp_scores)
                 best_score = grasp_scores[best_grasp]
                 best_width = grasp_widths[best_grasp]

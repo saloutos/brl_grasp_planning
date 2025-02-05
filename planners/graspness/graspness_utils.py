@@ -11,7 +11,6 @@ import copy
 from grasp_nms import nms_grasp
 
 
-
 # TODO: move these to config file
 GRASP_MAX_WIDTH = 0.1
 GRASPNESS_THRESHOLD = 0.1
