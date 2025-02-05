@@ -489,14 +489,20 @@ def visualize_grasps(pcd_cam, pred_grasps_cam, scores, window_name='Open3D', plo
     if gripper_openings is None:
         gripper_openings = np.ones(len(scores))*gripper_width
 
+    # find best grasp
+    best_grasp_idx = np.argmax(scores)
+    best_grasp_complement_idx = np.arange(len(scores)) != best_grasp_idx
+    print('Best grasp:', best_grasp_idx)
+    draw_grasps(vis, [pred_grasps_cam[best_grasp_idx,:,:]], np.eye(4), colors=[(1, 0, 0)], gripper_openings=[gripper_openings[best_grasp_idx]])
+
+    # plot the rest of the grasps using colormap (still use best grasp to set max of colormap)
     max_score = np.max(scores)
     min_score = np.min(scores)
-
-    colors3 = [cm2((score - min_score) / (max_score - min_score))[:3] for score in scores]
-    draw_grasps(vis, pred_grasps_cam, np.eye(4), colors=colors3, gripper_openings=gripper_openings)
-    # TODO: the best grasp isn't always plotting correctly? not sure why though
-    best_grasp_idx = np.argmax(scores)
-    draw_grasps(vis, [pred_grasps_cam[best_grasp_idx,:,:]], np.eye(4), colors=[(1, 0, 0)], gripper_openings=[gripper_openings[best_grasp_idx]])
+    new_scores = list(scores)
+    new_scores.pop(best_grasp_idx)
+    if len(new_scores) > 0:
+        colors3 = [cm2((score - min_score) / (max_score - min_score))[:3] for score in new_scores]
+        draw_grasps(vis, pred_grasps_cam[best_grasp_complement_idx,:,:], np.eye(4), colors=colors3, gripper_openings=gripper_openings[best_grasp_complement_idx])
 
     vis.run()
     vis.destroy_window()
