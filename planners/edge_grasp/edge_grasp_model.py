@@ -42,12 +42,19 @@ class EdgeGraspNet:
     def predict_scene_grasps(self, pc_input):
 
         # pre-process point clouds
+
+        # crop PC based on bounding box in world frame
+        # TODO: put this box size in config?
+        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.39]))
+        pc_input = pc_input.crop(workspace_bb)
+
         # TODO: could put these filtering parameters into config file
         # pc_input, ind = pc_input.remove_statistical_outlier(nb_neighbors=10, std_ratio=2.0) # remove points that are further away from their neighbores than average
         pc_input, ind = pc_input.remove_radius_outlier(nb_points=30, radius=0.03) # remove points that have less than nb_points in radius
         pc_input.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.04, max_nn=30))
         # pc_input.orient_normals_consistent_tangent_plane(30) # this takes like 1 second
         # orient normals towards camera to make sure they don't point inside objects
+        # TODO: should this camera direction be in config file? passed into this function as cam_extrinsic argument?
         pc_input.orient_normals_to_align_with_direction(orientation_reference=np.array([0, -0.4, 0.8]))
         # finally, downsample based on voxel size
         pc_input = pc_input.voxel_down_sample(voxel_size=0.004)
@@ -92,7 +99,7 @@ class EdgeGraspNet:
         relative_pos = des_pos - sample_pos # vectors from approach points to contact points
         relative_pos_normalized = F.normalize(relative_pos, p=2, dim=1) # unit vectors from approach points to contact points
 
-        print('Number of potential edges: ', len(edges))
+        # print('Number of potential edges: ', len(edges))
 
         # filter edges
         # NOTE: this is before any network evaluation
@@ -110,13 +117,13 @@ class EdgeGraspNet:
         # don't want to approach from too far "below" horizontal
         up_dot_vals = torch.einsum('ik,k->i', valid_edge_approach, torch.tensor([0., 0., 1.]).to(self.device))
         up_dot_mask = (up_dot_vals > self._edge_grasp_cfg['EVAL']['up_dot_th'])
-        print('Up dot:', up_dot_mask.sum())
+        # print('Up dot:', up_dot_mask.sum())
 
         # make sure contact point and approach point aren't too far from each other
         relative_norm = torch.linalg.norm(relative_pos, dim=-1)
         rel_norm_mask = torch.logical_and(relative_norm > self._edge_grasp_cfg['EVAL']['rel_norm_min'],
                                             relative_norm < self._edge_grasp_cfg['EVAL']['rel_norm_max'])
-        print('Rel norm:', rel_norm_mask.sum())
+        # print('Rel norm:', rel_norm_mask.sum())
 
         # calculate grasp depth between approach point and contact points
         # contact point should be further than approach point, but not too far
@@ -124,11 +131,11 @@ class EdgeGraspNet:
         depth_proj = -torch.sum(relative_pos * valid_edge_approach, dim=-1)
         depth_proj_mask =   torch.logical_and(depth_proj > self._edge_grasp_cfg['EVAL']['depth_proj_min'],
                                                 depth_proj < self._edge_grasp_cfg['EVAL']['depth_proj_max'])
-        print('Depth proj:', depth_proj_mask.sum())
+        # print('Depth proj:', depth_proj_mask.sum())
 
         # build geometry mask
         geometry_mask = torch.all(torch.stack([up_dot_mask, rel_norm_mask, depth_proj_mask]), dim=0)
-        print('All geometry:', geometry_mask.sum())
+        # print('All geometry:', geometry_mask.sum())
 
         # check table collisions based on z height
         if self._edge_grasp_cfg['EVAL']['check_gripper_collisions']:
@@ -137,7 +144,7 @@ class EdgeGraspNet:
             pose_candidates = orthogonal_grasps(geometry_mask, depth_proj, valid_edge_approach, des_normals, sample_pos)
             table_grasp_mask = get_gripper_points_mask(pose_candidates, z_threshold=self._edge_grasp_cfg['EVAL']['gripper_z_th'])
             geometry_mask[geometry_mask == True] = table_grasp_mask
-            print('All geometry after table collisions:', geometry_mask.sum())
+            # print('All geometry after table collisions:', geometry_mask.sum())
 
         # get final edges
         edge_sample_index = all_edge_index[geometry_mask]
@@ -158,7 +165,7 @@ class EdgeGraspNet:
                         relative_pos=relative_pos[edge_sample_index, :],
                         depth_proj=depth_proj[edge_sample_index])
             data = data.to(self.device)
-            # evaluate model 
+            # evaluate model
             # things get reordered in batch, so returns values in new order
             score, depth_projection, approaches, sample_pos, des_normals = self.model.act(data)
 
@@ -166,16 +173,21 @@ class EdgeGraspNet:
             all_scores = F.sigmoid(score)
             grasp_mask = (all_scores > self._edge_grasp_cfg['EVAL']['selection_th'])
             masked_scores = all_scores[grasp_mask]
-            print('Number of grasps selected: ', len(masked_scores))
+            # print('Number of grasps selected: ', len(masked_scores))
 
-            # TODO: check that at least one grasp is selected?
+            if len(masked_scores) == 0:
+                # just return best grasp
+                best_grasp = torch.argmax(all_scores)
+                grasp_mask[best_grasp] = 1
+                masked_scores = all_scores[grasp_mask]
 
             # build new grasp poses
             masked_poses = orthogonal_grasps(grasp_mask, depth_projection, approaches, des_normals, sample_pos)
 
             # calculate grasp widths
-            # TODO: what is going on here...why is 0.016 added?
-            widths = torch.abs(torch.sum(data.relative_pos * des_normals, dim=-1)) + 0.016
+            # TODO: put this in config?
+            grasp_clearance = 0.005 #0.016
+            widths = torch.abs(torch.sum(data.relative_pos * des_normals, dim=-1)) + grasp_clearance
             widths = widths[grasp_mask].clip(max=0.04)
             widths = (widths * 2)
 
@@ -184,14 +196,21 @@ class EdgeGraspNet:
             grasp_scores = masked_scores.detach().cpu().numpy()
             gripper_widths = widths.detach().cpu().numpy()
 
-            # TODO: limit number of grasps returned?
-
+            # limit number of grasps returned
+            if len(grasp_scores) > self._edge_grasp_cfg['EVAL']['max_grasps']:
+                # sort by score
+                sort_idx = np.argsort(grasp_scores)[::-1]
+                # limit to max number
+                pred_grasps = pred_grasps[sort_idx[:self._edge_grasp_cfg['EVAL']['max_grasps']]]
+                grasp_scores = grasp_scores[sort_idx[:self._edge_grasp_cfg['EVAL']['max_grasps']]]
+                gripper_widths = gripper_widths[sort_idx[:self._edge_grasp_cfg['EVAL']['max_grasps']]]
 
         else:
             grasp_scores, gripper_widths = [0], [0]
             pred_grasps = np.expand_dims(np.eye(4), axis=0)
 
-        return pred_grasps, grasp_scores, gripper_widths
+        print('Number of grasps selected: ', len(grasp_scores))
+        return pred_grasps, grasp_scores, gripper_widths, pc_input
 
 
 

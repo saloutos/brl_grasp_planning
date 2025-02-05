@@ -4,6 +4,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import open3d as o3d
+import copy
 
 from .cgn_utils import *
 
@@ -43,41 +45,47 @@ class ContactGraspNet:
         self.model.load_state_dict(model_state_dict)
 
     # run model for entire scene with segmented point clouds
-    def predict_scene_grasps(self, pcd_cam, cam_extrinsics=None):
+    def predict_scene_grasps(self, pcd_world, cam_extrinsics):
         """
         Predict num_point grasps on a full point cloud or in local box regions around point cloud segments.
 
         Arguments:
-            sess {tf.Session} -- Tensorflow Session
-            pc_full {np.ndarray} -- Nx3 full scene point cloud
+            pcd_cam {o3d.geometry.PointCloud} -- input point cloud in camera frame
+            cam_extrinsics {np.ndarray} -- 4x4 camera extrinsics matrix
 
         Keyword Arguments:
-            pc_segments {dict[int, np.ndarray]} -- Dict of Mx3 segmented point clouds of objects of interest (default: {{}})
-            local_regions {bool} -- crop 3D local regions around object segments for prediction (default: {False})
-            filter_grasps {bool} -- filter grasp contacts such that they only lie within object segments (default: {False})
-            forward_passes {int} -- Number of forward passes to run on each point cloud. (default: {1})
+            return_world_frame {bool} -- return grasps in world frame (default: {True})
 
         Returns:
             [np.ndarray, np.ndarray, np.ndarray, np.ndarray] -- pred_grasps_cam, scores, contact_pts, gripper_openings
         """
+
+        # crop PC based on bounding box in world frame
+        # TODO: put this box size in config?
+        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.41]))
+        pcd_world = pcd_world.crop(workspace_bb)
+        # get cropped point cloud in camera frame as well
+        pcd_cam = copy.deepcopy(pcd_world).transform(np.linalg.inv(cam_extrinsics))
+        # TODO: downsample point cloud? put this voxel size in config?
+        # print('Cropped point cloud to {} points'.format(len(pcd_cam.points)))
+        pcd_cam = pcd_cam.voxel_down_sample(voxel_size=0.004)
+        # print('Downsampled point cloud to {} points'.format(len(pcd_cam.points)))
+
         pc_full = np.asarray(pcd_cam.points)
         pred_grasps_cam, scores, contact_pts, gripper_openings = self.predict_grasps(pc_full)
         print('Generated {} grasps'.format(len(pred_grasps_cam)))
         # TODO: filter grasps to only lie within object segments?
 
-        if cam_extrinsics is not None:
-            # convert to world frame, and return grasps in world frame
-            # put grasps in world frame
-            pred_grasps_world = np.zeros_like(pred_grasps_cam)
-            contact_pts_world = np.zeros_like(contact_pts)
-            for i,g in enumerate(pred_grasps_cam):
-                pred_grasps_world[i,:4,:4] = np.matmul(cam_extrinsics, g)
-                contact_pts_world[i] = np.matmul(cam_extrinsics[:3,:3], contact_pts[i]) + cam_extrinsics[:3,3]
-            # return grasps, scores, contact points, and grasp widths
-            return pred_grasps_world, scores, contact_pts_world, gripper_openings
-        else:
-            # return grasps, scores, contact points, and grasp widths
-            return pred_grasps_cam, scores, contact_pts, gripper_openings
+        # convert to world frame, and return grasps in world frame
+        # put grasps in world frame
+        pred_grasps_world = np.zeros_like(pred_grasps_cam)
+        contact_pts_world = np.zeros_like(contact_pts)
+        for i,g in enumerate(pred_grasps_cam):
+            pred_grasps_world[i,:4,:4] = np.matmul(cam_extrinsics, g)
+            contact_pts_world[i] = np.matmul(cam_extrinsics[:3,:3], contact_pts[i]) + cam_extrinsics[:3,3]
+        # return grasps, scores, contact points, and grasp widths
+        return pred_grasps_world, scores, contact_pts_world, gripper_openings, pcd_world
+
 
     # main function for evaluating model
     def predict_grasps(self, pc, convert_cam_coords=True, forward_passes=1):

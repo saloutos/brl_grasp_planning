@@ -275,7 +275,7 @@ class PandaGripperPlatform:
         # TODO: update this
         self.mj_data.ctrl = self.gr_data.get_ctrl(self.gr_data.all_idxs)
 
-    def capture_scene(self, cam_name, crop=True):
+    def capture_scene(self, cam_name):
 
         # need to make current every time
         self.gl_context.make_current()
@@ -360,14 +360,5 @@ class PandaGripperPlatform:
 
         # convert PC to world frame
         pcd_world = copy.deepcopy(pcd_cam).transform(cam_extrinsics)
-        # crop PC based on bounding box in world frame
-        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.39]))
-        pcd_world_crop = pcd_world.crop(workspace_bb)
-        # get cropped point cloud in camera frame as well
-        pcd_cam_crop = copy.deepcopy(pcd_world_crop).transform(np.linalg.inv(cam_extrinsics))
 
-        # TODO: could return pcd_cam, pcd_world, (cam_params), (image)
-        if crop:
-            return pcd_cam_crop, pcd_world_crop, cam_extrinsics, cam_intrinsics, rgb_array, depth_array
-        else:
-            return pcd_cam, pcd_world, cam_extrinsics, cam_intrinsics, rgb_array, depth_array
+        return pcd_cam, pcd_world, cam_extrinsics, cam_intrinsics, rgb_array, depth_array

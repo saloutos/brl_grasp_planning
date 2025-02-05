@@ -134,9 +134,17 @@ try:
                 pcd_cam3, pcd_world3, cam_extrinsics3, cam_intrinsics3, rgb_array3, depth_array3 = PandaGP.capture_scene("overhead_cam3", crop=True)
                 pcd_cam4, pcd_world4, cam_extrinsics4, cam_intrinsics4, rgb_array4, depth_array4 = PandaGP.capture_scene("overhead_cam4", crop=True)
 
+                # # crop PC based on bounding box in world frame
+                # workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.41]))
+                # pcd_world_crop = pcd_world.crop(workspace_bb)
+                # # get cropped point cloud in camera frame as well
+                # pcd_cam_crop = copy.deepcopy(pcd_world_crop).transform(np.linalg.inv(cam_extrinsics))
+
                 # merge world point clouds
                 full_pcd_world = pcd_world + pcd_world2 + pcd_world3 + pcd_world4
                 full_pcd_world = full_pcd_world.voxel_down_sample(voxel_size=0.002) # TODO: tune this downsample parameter?
+                workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.41]))
+                full_pcd_world = full_pcd_world.crop(workspace_bb)
                 # then convert back to first camera frame? or any other frame?
                 full_pcd_cam1 = copy.deepcopy(full_pcd_world).transform(np.linalg.inv(cam_extrinsics))
 
@@ -163,8 +171,8 @@ try:
                 plan_start = time.time()
 
                 ### TODO: choose planner here!!!
-                grasp_poses_world, grasp_scores, contact_pts, grasp_widths = CGN.predict_scene_grasps(pcd_cam, cam_extrinsics)
-                # grasp_poses_world, grasp_scores, grasp_widths = EDGE.predict_scene_grasps(pcd_world)
+                grasp_poses_world, grasp_scores, contact_pts, grasp_widths, pcd_world_out = CGN.predict_scene_grasps(pcd_cam, cam_extrinsics)
+                # grasp_poses_world, grasp_scores, grasp_widths, pcd_world_out = EDGE.predict_scene_grasps(pcd_world)
                 # grasp_poses_world, grasp_scores, grasp_widths = GSN.predict_scene_grasps(pcd_cam, cam_extrinsics)
                 # NOTE: for GIGA, choose how many camera views to use
                 # depths = [depth_array] # depth_array2, depth_array3, depth_array4]
@@ -172,11 +180,6 @@ try:
                 # grasp_poses_world, grasp_scores, grasp_widths = GIGA.predict_scene_grasps(depths, cam_intrinsics, cam_poses)
 
                 plan_time = time.time() - plan_start
-
-                # # put grasps in world frame
-                # grasp_poses_world_array = np.zeros_like(grasp_poses_cam)
-                # for i,g in enumerate(grasp_poses_cam):
-                #     grasp_poses_world_array[i,:4,:4] = np.matmul(cam_extrinsics, g)
 
                 best_grasp = np.argmax(grasp_scores)
                 best_score = grasp_scores[best_grasp]
