@@ -4,14 +4,8 @@ import torch.nn.functional as F
 import enum
 import numpy as np
 import scipy.spatial.transform
-
-
-
-
-
-# TODO: put this in config file?
-LOW_TH = 0.5
-
+import open3d as o3d
+import matplotlib.pyplot as plt
 
 # TODO: clean up this file, can probably remove a lot of stuff
 
@@ -187,3 +181,25 @@ def normalize_3d_coordinate(p, padding=0.1):
     if p_nor.min() < 0:
         p_nor[p_nor < 0] = 0.0
     return p_nor
+
+def vis_vol(pt_vol, filt_vol, vis_vol, size, other_vis=None):
+    cm = plt.get_cmap('viridis')
+    vis_pts = []
+    vis_colors = []
+    # get points and colors
+    for index in np.argwhere(filt_vol):
+        i, j, k = index
+        pt = pt_vol[i, j, k].numpy()
+        vis_pts.append(pt)
+        col = cm(vis_vol[i, j, k])
+        vis_colors.append(col[:3])
+    # visualize
+    vis_pts = np.asarray(vis_pts)*size
+    vis_colors = np.asarray(vis_colors)
+    vis_pcd = o3d.geometry.PointCloud()
+    vis_pcd.points = o3d.utility.Vector3dVector(vis_pts)
+    vis_pcd.colors = o3d.utility.Vector3dVector(vis_colors)
+    if other_vis is not None:
+        o3d.visualization.draw_geometries([vis_pcd]+other_vis)
+    else:
+        o3d.visualization.draw_geometries([vis_pcd])

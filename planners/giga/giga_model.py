@@ -9,7 +9,7 @@ import time
 from scipy import ndimage
 import open3d as o3d
 from math import cos, sin
-
+import matplotlib.pyplot as plt
 
 from .giga_utils import *
 
@@ -24,13 +24,11 @@ class GIGANet:
 
         # some params from giga init
         # TODO: put these in config file
-        self.best = False # only return top grasp
-        self.always_detect = True # always return at least one grasp, regardless of threshold # TODO: this would be useful for other planners too!
-        self.qual_th = 0.8 # 0.9
-        self.tsdf_resolution = 100 # 40
-        # TODO: eventually, increase this
-        self.sample_resolution = 100 # 40
-        self.size = 0.8 # 0.3
+
+        # tsdf construction params
+        self.scene_resolution = 40 # 100
+        self.sample_resolution = 100 # 100
+        self.size = 0.6 # 0.8
 
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -38,7 +36,7 @@ class GIGANet:
 
         # load weights and put into model
         # TODO: put some of this in config?
-        checkpoint_path = 'planners/giga/checkpoints/giga_pile.pt'
+        checkpoint_path = 'planners/giga/checkpoints/giga_packed.pt'
         checkpoint = torch.load(checkpoint_path, weights_only=False)
         self.model.load_state_dict(checkpoint)
         print('Done loading model params.')
@@ -54,20 +52,26 @@ class GIGANet:
         self.sample_pos = pos.view(1, self.sample_resolution * self.sample_resolution * self.sample_resolution, 3)
 
     # run model for an entire scene
-    def predict_scene_grasps(self, depth_images, camera_intrinsics, camera_poses):
+    def predict_scene_grasps(self, depth_images, camera_intrinsics, camera_poses, pcd_world):
 
         # create scene TSDF
         # TODO: time this, is it ineffecient?
-        voxel_size = self.size / self.tsdf_resolution
-        sdf_trunc = 4 * voxel_size
-
-        tsdf = o3d.pipelines.integration.UniformTSDFVolume(
+        voxel_size = self.size / self.scene_resolution
+        sdf_trunc = 4 * voxel_size # TODO: why 4?
+        scene_tsdf = o3d.pipelines.integration.UniformTSDFVolume(
             length=self.size,
-            resolution=self.tsdf_resolution,
+            resolution=self.scene_resolution,
             sdf_trunc=sdf_trunc,
             color_type=o3d.pipelines.integration.TSDFVolumeColorType.NoColor,
         )
-
+        voxel_size = self.size / self.sample_resolution
+        sdf_trunc = 4 * voxel_size # TODO: why 4?
+        sample_tsdf = o3d.pipelines.integration.UniformTSDFVolume(
+            length=self.size,
+            resolution=self.sample_resolution,
+            sdf_trunc=sdf_trunc,
+            color_type=o3d.pipelines.integration.TSDFVolumeColorType.NoColor,
+        )
         # NOTE: assuming all cameras have same intrinsics
         intrinsic = o3d.camera.PinholeCameraIntrinsic(
                 width=camera_intrinsics[0],
@@ -77,8 +81,7 @@ class GIGANet:
                 fx=camera_intrinsics[4],
                 fy=camera_intrinsics[4]
             )
-
-        # loop through depth images and integrate into TSDF
+        # loop through depth images and integrate into scene TSDF and sample TSDF!
         for i in range(len(depth_images)):
             # get individual data
             depth_image = depth_images[i]
@@ -90,33 +93,50 @@ class GIGANet:
                 depth_scale=1.0,
                 depth_trunc=2.0,
                 convert_rgb_to_intensity=False)
-            # add offset for TSDF origin to camera pose
+            # add offset to center world origin within TSDF/voxel volume
+            # NOTE: will need to undo this offset when returning any points or grasp poses!
             camera_pose[0,3] += self.size/2.0
             camera_pose[1,3] += self.size/2.0
             camera_pose[2,3] += self.size/2.0
             # integrate image into TSDF
-            tsdf.integrate(rgbd, intrinsic, np.linalg.inv(camera_pose))
-
-        # TODO: is this part too slow?
-        # what is this doing? why is it pulling out color?
-        shape = (1, self.tsdf_resolution, self.tsdf_resolution, self.tsdf_resolution)
-        tsdf_vol = np.zeros(shape, dtype=np.float32)
-        voxels = tsdf.extract_voxel_grid().get_voxels()
+            scene_tsdf.integrate(rgbd, intrinsic, np.linalg.inv(camera_pose))
+            sample_tsdf.integrate(rgbd, intrinsic, np.linalg.inv(camera_pose))
+        # get scene TSDF voxel grid as numpy array
+        shape = (1, self.scene_resolution, self.scene_resolution, self.scene_resolution)
+        scene_tsdf_vol = np.zeros(shape, dtype=np.float32)
+        voxels = scene_tsdf.extract_voxel_grid().get_voxels()
         for voxel in voxels:
             i, j, k = voxel.grid_index
-            tsdf_vol[0, i, j, k] = voxel.color[0]
+            scene_tsdf_vol[0, i, j, k] = voxel.color[0]
+        # also get sample TSDF voxel grid as numpy array
+        shape = (1, self.sample_resolution, self.sample_resolution, self.sample_resolution)
+        sample_tsdf_vol = np.zeros(shape, dtype=np.float32)
+        voxels = sample_tsdf.extract_voxel_grid().get_voxels()
+        for voxel in voxels:
+            i, j, k = voxel.grid_index
+            sample_tsdf_vol[0, i, j, k] = voxel.color[0]
+        sample_tsdf_vol = sample_tsdf_vol.squeeze() # not sure why we add a dim and then take it away
 
-        # Show point cloud
-        pcd_new = tsdf.extract_point_cloud()
-        o3d.visualization.draw_geometries([pcd_new])
-        # show mesh
-        mesh = tsdf.extract_triangle_mesh()
-        mesh.compute_vertex_normals()
-        o3d.visualization.draw_geometries([mesh])
+
+        # NOTE: mostly for debugging
+        # extract point cloud
+        scene_pcd_new = scene_tsdf.extract_point_cloud()
+        scene_pcd_new = scene_pcd_new.translate(np.array([-self.size/2.0, -self.size/2.0, -self.size/2.0])) # undo offset
+
+        sample_pcd_new = sample_tsdf.extract_point_cloud()
+        sample_pcd_new = sample_pcd_new.translate(np.array([-self.size/2.0, -self.size/2.0, -self.size/2.0])) # undo offset
+        # o3d.visualization.draw_geometries([scene_pcd_new, sample_pcd_new.translate(np.array([0,0,0.1]))]) # move up to see better
+        # extract mesh
+        scene_mesh = scene_tsdf.extract_triangle_mesh()
+        scene_mesh.compute_vertex_normals()
+        scene_mesh = scene_mesh.translate(np.array([-self.size/2.0, -self.size/2.0, -self.size/2.0]))
+        # o3d.visualization.draw_geometries([scene_mesh, sample_pcd_new, pcd_world])
 
         # run model
+        scene_tsdf_vol = torch.from_numpy(scene_tsdf_vol).to(self.device) # move tsdf to gpu
         with torch.no_grad():
-            qual_vol, rot_vol, width_vol, occ_est_vol = self.model( torch.from_numpy(tsdf_vol).to(self.device), self.sample_pos, p_tsdf=self.sample_pos)
+            qual_vol, rot_vol, width_vol, occ_est_vol = self.model(scene_tsdf_vol, self.sample_pos, p_tsdf=self.sample_pos)
+
         # move outputs back to cpu, then reshape
         qual_vol = qual_vol.cpu().squeeze().numpy()
         rot_vol = rot_vol.cpu().squeeze().numpy()
@@ -127,149 +147,116 @@ class GIGANet:
         width_vol = width_vol.reshape((self.sample_resolution, self.sample_resolution, self.sample_resolution))
         occ_est_vol = occ_est_vol.reshape((self.sample_resolution, self.sample_resolution, self.sample_resolution))
 
-        # TODO: take a closer look at this, maybe sigmoid on occ output isn't the best?
-        # occ_thresh = 0.002
-        # occ_est_vol[occ_est_vol>=occ_thresh] = 1.0
-        # occ_est_vol[occ_est_vol<occ_thresh] = 0.0
-        # pt_vol = self.sample_pos.view(self.sample_resolution, self.sample_resolution, self.sample_resolution, 3).cpu()
-        # occ_est_pts = []
-        # for index in np.argwhere(occ_est_vol):
-        #     i, j, k = index
-        #     pt = pt_vol[i, j, k].numpy()
-        #     occ_est_pts.append(pt)
-        # occ_est_pts = (np.asarray(occ_est_pts)+0.5)*self.size
-        # occ_est_colors = np.zeros_like(occ_est_pts)
-        # occ_est_pcd = o3d.geometry.PointCloud()
-        # occ_est_pcd.points = o3d.utility.Vector3dVector(occ_est_pts)
-        # occ_est_pcd.colors = o3d.utility.Vector3dVector(occ_est_colors)
-        # o3d.visualization.draw_geometries([occ_est_pcd])
+        # look into occupancy probabilities?
+        # can also plot grasp quality
+        pt_vol = self.sample_pos.view(self.sample_resolution, self.sample_resolution, self.sample_resolution, 3).cpu()
+        occ_thresh = 0.3
+        occ_est_vol[occ_est_vol<occ_thresh] = 0.0
+        # vis_vol(pt_vol, occ_est_vol, occ_est_vol, self.size, other_vis = [scene_mesh])
+        # vis_vol(pt_vol, occ_est_vol, qual_vol, self.size, other_vis = [scene_mesh])
 
         # process outputs
-        gaussian_filter_sigma=1.0 # TODO: put these in config file
-        min_width=0.033
-        max_width=0.233
-        out_th=0.5
-        tsdf_vol = tsdf_vol.squeeze()
+
         # smooth quality volume with a Gaussian
-        qual_vol = ndimage.gaussian_filter(
+        gaussian_filter_sigma = 1.0 # TODO: put these in config file
+        qual_vol_smoothed = ndimage.gaussian_filter(
             qual_vol, sigma=gaussian_filter_sigma, mode="nearest"
         )
+
         # mask out voxels too far away from the surface
-        # TODO: need to change this if we want higher resolution sampling than TSDF?
-        outside_voxels = tsdf_vol > out_th
-        inside_voxels = np.logical_and(1e-3 < tsdf_vol, tsdf_vol < out_th)
+        # print("Total voxels:", len(qual_vol.flatten()))
+        out_th = 0.5 # implicit surface is at 0.5
+        outside_voxels = sample_tsdf_vol > out_th
+        inside_voxels = np.logical_and(1e-3 < sample_tsdf_vol, sample_tsdf_vol < out_th)
         valid_voxels = ndimage.morphology.binary_dilation(
             outside_voxels, iterations=2, mask=np.logical_not(inside_voxels)
         )
         qual_vol[valid_voxels == False] = 0.0
+        qual_vol_smoothed[valid_voxels == False] = 0.0
+        print("Voxels near surface:", len(qual_vol[valid_voxels].flatten()))
+        # vis_vol(pt_vol, valid_voxels, qual_vol, self.size, other_vis = [scene_mesh])
 
         # reject voxels with predicted widths that are too small or too large
-        qual_vol[np.logical_or(width_vol < min_width, width_vol > max_width)] = 0.0
-
-        # avoid grasp out of bounds [0.02  0.02  0.055]
-        limit=[0.02, 0.02, 0.055] # TODO: put this in config file
-        x_lim = int(limit[0] / voxel_size)
-        y_lim = int(limit[1] / voxel_size)
-        z_lim = int(limit[2] / voxel_size)
-        # TODO: uncomment this once limits are corrected
-        # TODO: is this even necessary?
-        # qual_vol[:x_lim] = 0.0
-        # qual_vol[-x_lim:] = 0.0
-        # qual_vol[:, :y_lim] = 0.0
-        # qual_vol[:, -y_lim:] = 0.0
-        # qual_vol[:, :, :z_lim] = 0.0
+        min_width=0.03 #0.033 # TODO: put these in config file
+        max_width=0.25 #0.233
+        valid_widths = np.logical_and(width_vol > min_width, width_vol < max_width)
+        qual_vol[valid_widths == False] = 0.0
+        # print("Remaining voxels after width filtering:", len(qual_vol[qual_vol>0.0].flatten()))
+        # vis_vol(pt_vol, qual_vol, width_vol, self.size, other_vis = [scene_mesh])
+        # vis_vol(pt_vol, qual_vol, qual_vol, self.size, other_vis = [scene_mesh])
 
         # select grasps to return
-        LOW_TH = 0.5 # TODO: put this in config file?
-        max_filter_size=4
-        center_vol = self.sample_pos.view(self.sample_resolution, self.sample_resolution, self.sample_resolution, 3).cpu()
-        best_only = False
-        qual_vol[qual_vol < LOW_TH] = 0.0
-        if self.always_detect and (qual_vol >= self.qual_th).sum() == 0:
-            # worst case, still return the best grasp (even if it has a low score)
-            best_only = True
-        else:
-            # threshold on grasp quality
-            qual_vol[qual_vol < self.qual_th] = 0.0
+        low_th = 0.6 # TODO: put this in config file
+        qual_vol[qual_vol < low_th] = 0.0
+        print("Remaining grasps after low threshold:", len(qual_vol[qual_vol>0.0].flatten()))
+
         # non maximum suppression
+        max_filter_size = 4
         max_vol = ndimage.maximum_filter(qual_vol, size=max_filter_size)
         qual_vol = np.where(qual_vol == max_vol, qual_vol, 0.0)
-        mask = np.where(qual_vol, 1.0, 0.0)
+        print("Remaining grasps after NMS:", len(qual_vol[qual_vol>0.0].flatten()))
+        # vis_vol(pt_vol, qual_vol, qual_vol, self.size, other_vis = [pcd_world])
+
+        # re-generate point cloud of grasp centers for plotting
+        grasp_pts = []
+        cm = plt.get_cmap('viridis')
+        grasp_colors = []
+        for index in np.argwhere(qual_vol):
+            i, j, k = index
+            pt = pt_vol[i, j, k].numpy()
+            grasp_pts.append(pt)
+            col = cm(qual_vol[i, j, k])
+            grasp_colors.append(col[:3])
+        grasp_pts = np.asarray(grasp_pts)*self.size
+        grasp_colors = np.asarray(grasp_colors)
+        grasp_pcd = o3d.geometry.PointCloud()
+        grasp_pcd.points = o3d.utility.Vector3dVector(grasp_pts)
+        grasp_pcd.colors = o3d.utility.Vector3dVector(grasp_colors)
 
         # construct grasps
         grasps, scores, widths = [], [], []
         centers = []
-        for index in np.argwhere(mask):
+        original_grasps = []
+        for index in np.argwhere(qual_vol):
             i, j, k = index
             score = qual_vol[i, j, k]
-            ori = Rotation.from_quat(rot_vol[i, j, k])
-            center = center_vol[i, j, k].numpy()
-            width = width_vol[i, j, k]
-            # TODO: just save grasp pose, widths
-            grasp = Transform(ori, center)
-            grasps.append(grasp)
+            # TODO: normalize this again?
+            quat = rot_vol[i, j, k]
+            ori = Rotation.from_quat(quat)
+            # apply scale to center pos
+            center = (pt_vol[i, j, k].numpy())*self.size
+            # TODO: scale grasp width?
+            width = width_vol[i, j, k]*self.size
+
+            # calculate grasp pose
+            grasp_pose = Transform(ori, center)
+
+            # need to swap some axes here, since grasp frame is different than our baseline CGN parameterization
+            new_pose = np.eye(4)
+            new_pose[:3,0] = grasp_pose.rotation.as_matrix()[:3,1]
+            new_pose[:3,1] = -grasp_pose.rotation.as_matrix()[:3,0]
+            new_pose[:3,2] = grasp_pose.rotation.as_matrix()[:3,2]
+            offset_dist = 0.06 # TODO: config
+            new_pose[:3,3] = grasp_pose.translation - offset_dist*grasp_pose.rotation.as_matrix()[:3,2]
+
+            # store everything
+            grasps.append(new_pose)
             scores.append(score)
             widths.append(width)
             centers.append(center)
-
-        # TODO: show grasp points and orientations here with voxel point cloud and mesh?
-        # center_pts = (np.asarray(centers)+0.5)*self.size
-        # center_colors = np.zeros_like(center_pts)
-        # center_colors[:,0] = 1.0
-        # chosen_centers_pcd = o3d.geometry.PointCloud()
-        # chosen_centers_pcd.points = o3d.utility.Vector3dVector(center_pts)
-        # chosen_centers_pcd.colors = o3d.utility.Vector3dVector(center_colors)
-        # base_pts = np.asarray(pcd_new.points)
-        # base_colors = np.zeros_like(base_pts)
-        # # TODO: save quality score for each base point to use as affordance map?
-        # base_colors[:,2] = 1.0
-        # base_pcd = o3d.geometry.PointCloud()
-        # base_pcd.points = o3d.utility.Vector3dVector(base_pts)
-        # base_pcd.colors = o3d.utility.Vector3dVector(base_colors)
-        # o3d.visualization.draw_geometries([base_pcd, chosen_centers_pcd, occ_est_pcd])
+            original_grasps.append(grasp_pose)
 
         # sort grasps by score
         sorted_grasps = [grasps[i] for i in reversed(np.argsort(scores))]
         sorted_scores = [scores[i] for i in reversed(np.argsort(scores))]
         sorted_widths = [widths[i] for i in reversed(np.argsort(scores))]
-        if best_only and len(sorted_grasps) > 0:
-            sorted_grasps = [sorted_grasps[0]]
-            sorted_scores = [sorted_scores[0]]
-            sorted_widths = [sorted_widths[0]]
-
-        grasps, scores, widths = np.asarray(sorted_grasps), np.asarray(sorted_scores), np.asarray(sorted_widths)
-        grasp_poses = []
-        grasp_widths = []
-        grasp_scores = []
-        if len(grasps) > 0:
-            # choose which grasps to return
-            if self.best:
-                p = np.arange(len(grasps))
-            else:
-                p = np.random.permutation(len(grasps))
-            for g in grasps[p]:
-                # g.translation[2] += 0.5 # set zero of z-coordinate
-                g.translation = g.translation * self.size # scale posiitons to TSDF size
-                new_pose = np.eye(4)
-                # need to swap some axes here, since grasp frame is different than our baseline CGN parameterization
-                new_pose[:3,0] = g.rotation.as_matrix()[:3,1]
-                new_pose[:3,1] = -g.rotation.as_matrix()[:3,0]
-                new_pose[:3,2] = g.rotation.as_matrix()[:3,2]
-                offset_dist = 0.06
-                new_pose[:3,3] = g.translation - offset_dist*g.rotation.as_matrix()[:3,2]
-                grasp_poses.append(new_pose)
-            for w in widths[p]:
-                width = w * self.size
-                grasp_widths.append(w)
-            for s in scores[p]:
-                grasp_scores.append(s)
 
         # convert list of poses to array
-        grasp_poses_array = np.zeros((len(grasp_scores),4,4))
-        for i in range(len(grasp_scores)):
-            grasp_poses_array[i,:4,:4] = grasp_poses[i]
+        grasp_poses_array = np.zeros((len(scores),4,4))
+        for i in range(len(scores)):
+            grasp_poses_array[i,:4,:4] = sorted_grasps[i]
         # return grasps, scores, widths
-        return grasp_poses_array, np.asarray(grasp_scores), np.asarray(grasp_widths)
+        return grasp_poses_array, np.asarray(sorted_scores), np.asarray(sorted_widths), grasp_pcd
 
 
 
@@ -329,20 +316,17 @@ class GIGAModel(nn.Module):
         ''' Performs a forward pass through the network.
 
         Args:
-            p (tensor): sampled points, B*N*C
-            inputs (tensor): conditioning input, B*N*3
+            p (tensor): sampled points, B*N*C (queries for grasp quality, orientation, width)
+            inputs (tensor): conditioning input, B*N*3 (scene TSDF values)
             sample (bool): whether to sample for z
-            p_tsdf (tensor): tsdf query points, B*N_P*3
+            p_tsdf (tensor): tsdf query points, B*N_P*3 (queries for occupancy)
         '''
         c = self.encode_inputs(inputs)
         qual, rot, width = self.decode(p, c)
         if p_tsdf is not None:
             tsdf = self.decoder_tsdf(p_tsdf, c, **kwargs)
-            # TODO: map values to 0-1 interval somehow??
-            # tsdf = torch.exp(tsdf)
+            # map values to 0-1 interval
             tsdf = torch.sigmoid(tsdf)
-            # logits = self.decoder_tsdf(p_tsdf, c, **kwargs)
-            # tsdf = dist.Bernoulli(logits=logits)
             return qual, rot, width, tsdf
         else:
             return qual, rot, width
@@ -373,8 +357,9 @@ class GIGAModel(nn.Module):
             c (tensor): latent conditioned code c
         '''
 
-        logits = self.decoder_tsdf(p, c, **kwargs)
-        p_r = dist.Bernoulli(logits=logits)
+        p_r = self.decoder_tsdf(p, c, **kwargs)
+        # map values to 0-1 interval
+        p_r = torch.sigmoid(p_r)
         return p_r
 
     def decode(self, p, c, **kwargs):
