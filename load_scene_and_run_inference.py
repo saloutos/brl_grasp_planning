@@ -333,7 +333,7 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     # choose how many cameras to use here
     depths = [depth_array] #, depth_array2, depth_array3, depth_array4]
     cam_poses = [cam_extrinsics] #, cam_extrinsics2, cam_extrinsics3, cam_extrinsics4]
-    giga_grasp_poses_world, giga_grasp_scores, giga_grasp_widths, giga_grasp_pcd = giganet.predict_scene_grasps(depths, cam_intrinsics, cam_poses, pcd_world)
+    giga_grasp_poses_world, giga_grasp_scores, giga_grasp_widths, giga_grasp_pcd = giganet.predict_scene_grasps(depth_array, cam_intrinsics, cam_extrinsics, pcd_world)
     giga_toc = time.time() - giga_tic
     # visualize grasps
     giga_vis_pcd = pcd_world + giga_grasp_pcd
