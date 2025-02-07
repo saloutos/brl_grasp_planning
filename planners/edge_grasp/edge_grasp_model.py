@@ -204,6 +204,12 @@ class EdgeGraspNet:
                 pred_grasps = pred_grasps[sort_idx[:self._edge_grasp_cfg['EVAL']['max_grasps']]]
                 grasp_scores = grasp_scores[sort_idx[:self._edge_grasp_cfg['EVAL']['max_grasps']]]
                 gripper_widths = gripper_widths[sort_idx[:self._edge_grasp_cfg['EVAL']['max_grasps']]]
+            else:
+                # just sort
+                sort_idx = np.argsort(grasp_scores)[::-1]
+                pred_grasps = pred_grasps[sort_idx]
+                grasp_scores = grasp_scores[sort_idx]
+                gripper_widths = gripper_widths[sort_idx]
 
         else:
             grasp_scores, gripper_widths = [0], [0]

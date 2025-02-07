@@ -69,11 +69,13 @@ class GIGANet:
         shape = (1, self.resolution, self.resolution, self.resolution)
 
         # TODO: where is the best place to define this?
-        tsdf_offsets = np.array([[0.0, 0.0, self.size/2.0],
+        tsdf_offsets = np.array([
+                                [self.size/2.0, self.size/2.0, self.size/2.0],
+                                [0.0, 0.0, self.size/2.0],
                                 [self.size-2.0*voxel_size, 0.0, self.size/2.0],
                                 [self.size-2.0*voxel_size, self.size-2.0*voxel_size, self.size/2.0],
-                                [0.0, self.size-2.0*voxel_size, self.size/2.0]])
-
+                                [0.0, self.size-2.0*voxel_size, self.size/2.0]
+                                ])
 
         num_tsdfs = tsdf_offsets.shape[0]
         scene_tsdfs = []
@@ -292,8 +294,10 @@ class GIGANet:
         grasp_poses_array = np.zeros((len(all_scores),4,4))
         for i in range(len(all_scores)):
             grasp_poses_array[i,:4,:4] = sorted_grasps[i]
-        # return grasps, scores, widths
 
+        print("Final number of grasps:", len(sorted_grasps))
+
+        # return grasps, scores, widths
         return grasp_poses_array, np.asarray(sorted_scores), np.asarray(sorted_widths), full_grasp_pcd
 
 

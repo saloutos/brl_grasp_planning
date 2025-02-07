@@ -608,7 +608,7 @@ def draw_grasps(vis, grasps, cam_pose, gripper_openings, colors=[(0, 1., 0)]):
     line_set.colors = o3d.utility.Vector3dVector(colors)
     vis.add_geometry(line_set)
 
-def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), scores=None, widths=None, rgba=[0.0, 1.0, 0.0, 0.1], linewidth=3):
+def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), plot_best=True, scores=None, widths=None, rgba=[0.0, 1.0, 0.0, 0.1], linewidth=3):
     # TODO: add gripper openings, multiple colors back in?
     """
     Draws wireframe grasps from given camera pose and with given gripper openings
@@ -645,7 +645,7 @@ def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), scores=None, widths=None
         min_score = np.min(scores)
         for i, score in enumerate(scores):
             colors[i,0:3] = cm((score - min_score) / (max_score - min_score))[:3]
-            colors[i,3] = 0.2
+            colors[i,3] = 0.1
             if i == max_ind:
                 colors[i,:] = np.array([1, 0, 0, 1])
 
@@ -665,40 +665,40 @@ def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), scores=None, widths=None
         pts_homog = np.concatenate((pts, np.ones((7, 1))),axis=1)
         pts = np.dot(pts_homog, cam_pose.T)[:,:3]
 
+        # choose color
+        if scores is not None:
+            col = colors[i]
+        elif plot_best and i == 0:
+            col = rgba
+            col[3] = 1.0
+        elif plot_best:
+            col = rgba
+            col[3] = 0.05
+        else:
+            col = rgba
+
         # line 1
         mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
         mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, linewidth, pts[0,:], pts[1,:])
-        if scores is not None:
-            viewer.user_scn.geoms[index].rgba = colors[i]
-        else:
-            viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        viewer.user_scn.geoms[index].rgba = col
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 2
         mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
         mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, linewidth, pts[2,:], pts[3,:])
-        if scores is not None:
-            viewer.user_scn.geoms[index].rgba = colors[i]
-        else:
-            viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        viewer.user_scn.geoms[index].rgba = col
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 3
         mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
         mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, linewidth, pts[2,:], pts[5,:])
-        if scores is not None:
-            viewer.user_scn.geoms[index].rgba = colors[i]
-        else:
-            viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        viewer.user_scn.geoms[index].rgba = col
         viewer.user_scn.geoms[index].label = ''
         index+=1
         # line 4
         mujoco.mjv_initGeom(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, [0]*3, [0]*3, [0]*9, [1]*4)
         mujoco.mjv_connector(viewer.user_scn.geoms[index], mujoco.mjtGeom.mjGEOM_LINE, linewidth, pts[5,:], pts[6,:])
-        if scores is not None:
-            viewer.user_scn.geoms[index].rgba = colors[i]
-        else:
-            viewer.user_scn.geoms[index].rgba = np.array(rgba)
+        viewer.user_scn.geoms[index].rgba = col
         viewer.user_scn.geoms[index].label = ''
         index+=1
 

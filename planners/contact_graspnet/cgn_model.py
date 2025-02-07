@@ -83,8 +83,9 @@ class ContactGraspNet:
         for i,g in enumerate(pred_grasps_cam):
             pred_grasps_world[i,:4,:4] = np.matmul(cam_extrinsics, g)
             contact_pts_world[i] = np.matmul(cam_extrinsics[:3,:3], contact_pts[i]) + cam_extrinsics[:3,3]
-        # return grasps, scores, contact points, and grasp widths
-        return pred_grasps_world, scores, contact_pts_world, gripper_openings, pcd_world
+        # TODO: add contact points to point cloud before returning?
+
+        return pred_grasps_world, scores, gripper_openings, pcd_world
 
 
     # main function for evaluating model
@@ -184,8 +185,10 @@ class ContactGraspNet:
             pred_grasps_cam[:,:2, :] *= -1
             pred_points[:,:2] *= -1
 
+        # sort by score, then return
+        sorted_idcs = selection_idcs[np.argsort(pred_scores[selection_idcs])[::-1]]
         # return grasps, scores, points, and widths, based on grasp selection
-        return pred_grasps_cam[selection_idcs], pred_scores[selection_idcs], pred_points[selection_idcs], gripper_openings[selection_idcs].squeeze()
+        return pred_grasps_cam[sorted_idcs], pred_scores[sorted_idcs], pred_points[sorted_idcs], gripper_openings[sorted_idcs].squeeze()
 
     # helper functions
     def select_grasps(self, contact_pts, contact_conf, max_farthest_points=150, num_grasps=200, first_thres=0.25, second_thres=0.2, with_replacement=False):
