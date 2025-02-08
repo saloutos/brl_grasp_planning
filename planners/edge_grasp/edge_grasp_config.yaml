@@ -6,6 +6,11 @@ MODEL:
   sample_num: 128
   learning_rate: 1.0e-5
 EVAL:
+
+  # TODO: add local cropping vals?
+  approach_ball_rad: 0.05
+  approach_ball_max_nn: 1024
+
   up_dot_th: 0.3
   rel_norm_min: 0.005
   rel_norm_max: 0.035
@@ -15,7 +20,26 @@ EVAL:
   gripper_z_th: 0.005
   max_edges: 1000
   selection_th: 0.2
+
+  grasp_clearance: 0.005 #0.016
+  max_grasp_width: 0.08
+
   max_grasps: 100
+
+PC:
+  bb_center: [0.0, 0.0, 0.2]
+  bb_dims: [0.7, 0.6, 0.39]
+  normal_align_dir: [0.0, -0.4, 0.8]
+  voxel_size_ds: 0.004
+
+  # TODO: add radius outlier vals?
+  rad_out_pts: 30
+  rad_out_radius: 0.03
+  # TODO: add normal estimate vals?
+  normal_est_knn_max: 30
+  normal_est_knn_rad: 0.04
+
+
 
 
 

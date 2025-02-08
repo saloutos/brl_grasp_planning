@@ -188,13 +188,13 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     # TODO: pass in grasp success threshold? take threshold from config file?
     print('Generating Grasps...')
     cgn_tic = time.time()
-    cgn_grasp_poses_world1, cgn_grasp_scores1, cgn_contact_pts1, cgn_grasp_widths1, cgn_pcd_world1 = cgn.predict_scene_grasps(pcd_world, cam_extrinsics)
-    # cgn_grasp_poses_world2, cgn_grasp_scores2, cgn_contact_pts2, cgn_grasp_widths2, cgn_pcd_world2 = cgn.predict_scene_grasps(pcd_world2, cam_extrinsics2)
-    # cgn_grasp_poses_world3, cgn_grasp_scores3, cgn_contact_pts3, cgn_grasp_widths3, cgn_pcd_world3 = cgn.predict_scene_grasps(pcd_world3, cam_extrinsics3)
-    # cgn_grasp_poses_world4, cgn_grasp_scores4, cgn_contact_pts4, cgn_grasp_widths4, cgn_pcd_world4 = cgn.predict_scene_grasps(pcd_world4, cam_extrinsics4)
+    cgn_grasp_poses_world1, cgn_grasp_scores1, cgn_grasp_widths1, cgn_pcd_world1 = cgn.predict_scene_grasps(pcd_world, cam_extrinsics)
+    # cgn_grasp_poses_world2, cgn_grasp_scores2, cgn_grasp_widths2, cgn_pcd_world2 = cgn.predict_scene_grasps(pcd_world2, cam_extrinsics2)
+    # cgn_grasp_poses_world3, cgn_grasp_scores3, cgn_grasp_widths3, cgn_pcd_world3 = cgn.predict_scene_grasps(pcd_world3, cam_extrinsics3)
+    # cgn_grasp_poses_world4, cgn_grasp_scores4, cgn_grasp_widths4, cgn_pcd_world4 = cgn.predict_scene_grasps(pcd_world4, cam_extrinsics4)
     cgn_toc = time.time() - cgn_tic
 
-    # can also add contact points to visualzation
+    # can also add contact points to visualzation (need to return contact points from cgn again)
     # cgn_contact_pts1 += 0.0005 # small displacement to avoid overlap with object
     # cgn_contact_pts1_pcd = o3d.geometry.PointCloud()
     # cgn_contact_pts1_pcd.points = o3d.utility.Vector3dVector(cgn_contact_pts1)

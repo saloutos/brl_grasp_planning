@@ -16,32 +16,26 @@ from .giga_utils import *
 
 
 ### CLASS TO EVALUATE GIGA, PERFORM PRE AND POST PROCESSING OF DATA ###
-
-# TODO: what to put in config file?
-
 class GIGANet:
     def __init__(self, cfg):
-        self._giga_cfg = cfg
-
-        # some params from giga init
-        # TODO: put these in config file
+        self.cfg = cfg
 
         # tsdf construction params
+        # these are fixed, so won't but them in config file
         self.resolution = 40
         self.size = 0.3
+        self.voxel_size = self.size / self.resolution
 
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.model = GIGAModel(cfg, self.device)
 
         # load weights and put into model
-        # TODO: put some of this in config?
-        checkpoint_path = 'planners/giga/checkpoints/giga_pile.pt'
+        checkpoint_path = self.cfg['checkpoint_path']
         checkpoint = torch.load(checkpoint_path, weights_only=False)
         self.model.load_state_dict(checkpoint)
         print('Done loading model params.')
 
-        # TODO: define separate resolution parameter for this?
         # set up positions to use for grasp centers during prediction
         x, y, z = torch.meshgrid(torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), \
                                 torch.linspace(start=-0.5, end=0.5 - 1.0 / self.resolution, steps=self.resolution), \
@@ -50,6 +44,17 @@ class GIGANet:
         # 1, self.resolution, self.resolution, self.resolution, 3
         pos = torch.stack((x, y, z), dim=-1).float().unsqueeze(0).to(self.device)
         self.sample_pos = pos.view(1, self.resolution * self.resolution * self.resolution, 3)
+
+        # set up offsets for multiple TSDFs
+        self.tsdf_offsets = np.array([
+                        [self.size/2.0, self.size/2.0, self.size/2.0],
+                        [0.0, 0.0, self.size/2.0],
+                        [self.size-2.0*self.voxel_size, 0.0, self.size/2.0],
+                        [self.size-2.0*self.voxel_size, self.size-2.0*self.voxel_size, self.size/2.0],
+                        [0.0, self.size-2.0*self.voxel_size, self.size/2.0]
+                        ])
+        self.num_tsdfs = self.tsdf_offsets.shape[0]
+
 
     # run model for an entire scene
     def predict_scene_grasps(self, depth_image, camera_intrinsics, camera_pose, pcd_world):
@@ -64,31 +69,17 @@ class GIGANet:
                 fy=camera_intrinsics[4]
             )
 
-        voxel_size = self.size / self.resolution
-        sdf_trunc = 4 * voxel_size
-        shape = (1, self.resolution, self.resolution, self.resolution)
-
-        # TODO: where is the best place to define this?
-        tsdf_offsets = np.array([
-                                [self.size/2.0, self.size/2.0, self.size/2.0],
-                                [0.0, 0.0, self.size/2.0],
-                                [self.size-2.0*voxel_size, 0.0, self.size/2.0],
-                                [self.size-2.0*voxel_size, self.size-2.0*voxel_size, self.size/2.0],
-                                [0.0, self.size-2.0*voxel_size, self.size/2.0]
-                                ])
-
-        num_tsdfs = tsdf_offsets.shape[0]
         scene_tsdfs = []
         scene_tsdf_vols = []
         scene_pcds = []
         scene_meshes = []
 
         # integrate all tsdfs
-        for t in range(num_tsdfs):
+        for t in range(self.num_tsdfs):
             new_tsdf = o3d.pipelines.integration.UniformTSDFVolume(
                 length=self.size,
                 resolution=self.resolution,
-                sdf_trunc=sdf_trunc,
+                sdf_trunc=4*self.voxel_size,
                 color_type=o3d.pipelines.integration.TSDFVolumeColorType.NoColor,
             )
 
@@ -102,14 +93,14 @@ class GIGANet:
             # add offset to center world origin within TSDF/voxel volume
             # NOTE: will need to undo this offset when returning any points or grasp poses!
             pose_to_use = copy.deepcopy(camera_pose)
-            pose_to_use[0,3] += tsdf_offsets[t,0]
-            pose_to_use[1,3] += tsdf_offsets[t,1]
-            pose_to_use[2,3] += tsdf_offsets[t,2]
+            pose_to_use[0,3] += self.tsdf_offsets[t,0]
+            pose_to_use[1,3] += self.tsdf_offsets[t,1]
+            pose_to_use[2,3] += self.tsdf_offsets[t,2]
             # integrate image into TSDF
             new_tsdf.integrate(rgbd, intrinsic, np.linalg.inv(pose_to_use))
 
             # get scene TSDF voxel grid as numpy array
-            new_tsdf_vol = np.zeros(shape, dtype=np.float32)
+            new_tsdf_vol = np.zeros( (1, self.resolution, self.resolution, self.resolution) , dtype=np.float32)
             voxels = new_tsdf.extract_voxel_grid().get_voxels()
             for voxel in voxels:
                 i, j, k = voxel.grid_index
@@ -117,11 +108,15 @@ class GIGANet:
 
             # extract point cloud to check
             new_pcd = new_tsdf.extract_point_cloud()
-            new_pcd = new_pcd.translate(np.array([-tsdf_offsets[t,0], -tsdf_offsets[t,1], -tsdf_offsets[t,2]])) # undo offset
+            new_pcd = new_pcd.translate(np.array([-self.tsdf_offsets[t,0],
+                                                -self.tsdf_offsets[t,1],
+                                                -self.tsdf_offsets[t,2]])) # undo offset
             # extrach mesh too
             new_mesh = new_tsdf.extract_triangle_mesh()
             new_mesh.compute_vertex_normals()
-            new_mesh = new_mesh.translate(np.array([-tsdf_offsets[t,0], -tsdf_offsets[t,1], -tsdf_offsets[t,2]])) # undo offset
+            new_mesh = new_mesh.translate(np.array([-self.tsdf_offsets[t,0],
+                                                    -self.tsdf_offsets[t,1],
+                                                    -self.tsdf_offsets[t,2]])) # undo offset
 
             # append to lists
             scene_tsdfs.append(new_tsdf)
@@ -140,7 +135,7 @@ class GIGANet:
         all_scores = []
         all_widths = []
         all_grasp_pcds = []
-        for t in range(num_tsdfs):
+        for t in range(self.num_tsdfs):
 
             # get scene tsdf volume
             scene_tsdf_vol = torch.from_numpy(scene_tsdf_vols[t]).to(self.device) # move tsdf to gpu
@@ -161,18 +156,17 @@ class GIGANet:
             # look into occupancy probabilities?
             # can also plot grasp quality
             pt_vol = self.sample_pos.view(self.resolution, self.resolution, self.resolution, 3).cpu()
-            occ_thresh = 0.3
-            occ_est_vol[occ_est_vol<occ_thresh] = 0.0
+            occ_est_vol[occ_est_vol < self.cfg['occ_thresh']] = 0.0
             # vis_vol(pt_vol, occ_est_vol, occ_est_vol, self.size, other_vis = [scene_mesh])
             # vis_vol(pt_vol, occ_est_vol, qual_vol, self.size, other_vis = [scene_mesh])
 
             # process outputs
 
             # smooth quality volume with a Gaussian
-            gaussian_filter_sigma = 1.0 # TODO: put these in config file
-            qual_vol_smoothed = ndimage.gaussian_filter(
-                qual_vol, sigma=gaussian_filter_sigma, mode="nearest"
-            )
+            if self.cfg['use_gaussian_filter']:
+                qual_vol = ndimage.gaussian_filter(
+                    qual_vol, sigma=self.cfg['gaussian_filter_sigma'], mode="nearest"
+                )
 
             # mask out voxels too far away from the surface
             # print("Total voxels:", len(qual_vol.flatten()))
@@ -183,27 +177,25 @@ class GIGANet:
                 outside_voxels, iterations=2, mask=np.logical_not(inside_voxels)
             )
             qual_vol[valid_voxels == False] = 0.0
-            qual_vol_smoothed[valid_voxels == False] = 0.0
-            print("Voxels near surface:", len(qual_vol[valid_voxels].flatten()))
+            # print("Voxels near surface:", len(qual_vol[valid_voxels].flatten()))
             # vis_vol(pt_vol, valid_voxels, qual_vol, self.size, other_vis = [scene_mesh])
 
             # reject voxels with predicted widths that are too small or too large
-            min_width=0.03 #0.033 # TODO: put these in config file
-            max_width=0.25 #0.233
-            valid_widths = np.logical_and(width_vol > min_width, width_vol < max_width)
+            # NOTE: some widths are below 0.0, so we will always need to filter those out
+            # first, scale width vol so that filter values make more sense
+            width_vol = width_vol*self.size
+            valid_widths = np.logical_and(width_vol > self.cfg['min_width'], width_vol < self.cfg['max_width'])
             qual_vol[valid_widths == False] = 0.0
             # print("Remaining voxels after width filtering:", len(qual_vol[qual_vol>0.0].flatten()))
             # vis_vol(pt_vol, qual_vol, width_vol, self.size, other_vis = [scene_mesh])
             # vis_vol(pt_vol, qual_vol, qual_vol, self.size, other_vis = [scene_mesh])
 
             # select grasps to return
-            low_th = 0.6 # TODO: put this in config file
-            qual_vol[qual_vol < low_th] = 0.0
-            print("Remaining grasps after low threshold:", len(qual_vol[qual_vol>0.0].flatten()))
+            qual_vol[qual_vol < self.cfg['low_qual_thresh']] = 0.0
+            # print("Remaining grasps after low threshold:", len(qual_vol[qual_vol>0.0].flatten()))
 
             # non maximum suppression
-            max_filter_size = 4
-            max_vol = ndimage.maximum_filter(qual_vol, size=max_filter_size)
+            max_vol = ndimage.maximum_filter(qual_vol, size=self.cfg['nms_max_filter_size'])
             qual_vol = np.where(qual_vol == max_vol, qual_vol, 0.0)
             print("Remaining grasps after NMS:", len(qual_vol[qual_vol>0.0].flatten()))
             # vis_vol(pt_vol, qual_vol, qual_vol, self.size, other_vis = [pcd_world])
@@ -220,9 +212,9 @@ class GIGANet:
                 # scale pt based on tsdf size
                 pt *= self.size
                 # now, apply offset based on current tsdf idx origin
-                pt[0] -= tsdf_offsets[t,0]
-                pt[1] -= tsdf_offsets[t,1]
-                pt[2] -= tsdf_offsets[t,2]
+                pt[0] -= self.tsdf_offsets[t,0]
+                pt[1] -= self.tsdf_offsets[t,1]
+                pt[2] -= self.tsdf_offsets[t,2]
                 grasp_pts.append(pt)
                 col = cm(qual_vol[i, j, k])
                 grasp_colors.append(col[:3])
@@ -240,7 +232,7 @@ class GIGANet:
             for index in np.argwhere(qual_vol):
                 i, j, k = index
                 score = qual_vol[i, j, k]
-                # TODO: normalize this again? doesn't hurt
+                # normalize this again, it doesn't hurt
                 quat = rot_vol[i, j, k]
                 quat = quat / np.linalg.norm(quat)
                 ori = Rotation.from_quat(quat)
@@ -249,12 +241,11 @@ class GIGANet:
                 center += 0.5
                 center *= self.size
                 # apply offset based on tsdf origin
-                center[0] -= tsdf_offsets[t,0]
-                center[1] -= tsdf_offsets[t,1]
-                center[2] -= tsdf_offsets[t,2]
-                # TODO: some scaling of grasp width?
-                # max_width = 0.08
-                width = width_vol[i, j, k]*self.size
+                center[0] -= self.tsdf_offsets[t,0]
+                center[1] -= self.tsdf_offsets[t,1]
+                center[2] -= self.tsdf_offsets[t,2]
+                # width has already been scaled, so just grab value
+                width = width_vol[i, j, k]
 
                 # calculate grasp pose
                 grasp_pose = Transform(ori, center)
@@ -263,10 +254,8 @@ class GIGANet:
                 new_pose = np.eye(4)
                 new_pose[:3,0] = grasp_pose.rotation.as_matrix()[:3,1]
                 new_pose[:3,1] = -grasp_pose.rotation.as_matrix()[:3,0]
-                # new_pose[:3,0] = grasp_pose.rotation.as_matrix()[:3,0]
-                # new_pose[:3,1] = grasp_pose.rotation.as_matrix()[:3,1]
                 new_pose[:3,2] = grasp_pose.rotation.as_matrix()[:3,2]
-                offset_dist = 0.05 # TODO: config
+                offset_dist = self.cfg['grasp_offset_dist']
                 new_pose[:3,3] = grasp_pose.translation - offset_dist*grasp_pose.rotation.as_matrix()[:3,2]
 
                 # store everything
@@ -294,6 +283,8 @@ class GIGANet:
         grasp_poses_array = np.zeros((len(all_scores),4,4))
         for i in range(len(all_scores)):
             grasp_poses_array[i,:4,:4] = sorted_grasps[i]
+
+        # TODO: limit number of grasps here? set limit to 100?
 
         print("Final number of grasps:", len(sorted_grasps))
 

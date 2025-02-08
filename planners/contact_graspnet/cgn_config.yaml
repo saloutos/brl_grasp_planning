@@ -1,4 +1,10 @@
-TEST:
+PC:
+  bb_center: [0.0, 0.0, 0.2]
+  bb_dims: [0.7, 0.6, 0.41]
+  voxel_size_ds: 0.004
+
+
+EVAL:
   allow_zero_margin: 0
   bin_vals: max
   extra_opening: 0.005
@@ -8,6 +14,7 @@ TEST:
   first_thres: 0.2
   second_thres: 0.05
   with_replacement: false
+
 DATA:
   checkpoint_path: planners/contact_graspnet/checkpoints/model.pt
   gripper_width: 0.08
@@ -39,7 +46,9 @@ DATA:
   ndataset_points: 20000
   num_point: 2048
   num_input_points: 20000
-  use_farthest_point: false
+  use_farthest_point: false # is this always false?
+
+
 MODEL:
   asymmetric_model: true
   bin_offsets: true

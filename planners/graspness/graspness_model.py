@@ -20,7 +20,7 @@ from .graspness_utils import *
 
 class GraspnessNet:
     def __init__(self, cfg):
-        self._graspnet_cfg = cfg
+        self.cfg = cfg
 
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -29,7 +29,7 @@ class GraspnessNet:
         self.model.to(self.device)
 
         # load weights
-        checkpoint_path = 'planners/graspness/checkpoints/minkuresunet_realsense.tar' # TODO: put this in config yaml
+        checkpoint_path = self.cfg['checkpoint_path']
         checkpoint = torch.load(checkpoint_path, weights_only=False)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         start_epoch = checkpoint['epoch']
@@ -42,13 +42,14 @@ class GraspnessNet:
 
         # some pre-processing
         # crop PC based on bounding box in world frame
-        # TODO: put this box size in config?
-        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.39]))
+        bb_center = np.array(self.cfg['bb_center'])
+        bb_dims = np.array(self.cfg['bb_dims'])
+        workspace_bb = o3d.geometry.OrientedBoundingBox(bb_center, np.eye(3), bb_dims)
         pcd_world = pcd_world.crop(workspace_bb)
         # get cropped point cloud in camera frame as well
         pcd_cam = copy.deepcopy(pcd_world).transform(np.linalg.inv(cam_extrinsics))
-        # TODO: downsample point cloud? put this voxel size in config?
-        pcd_cam = pcd_cam.voxel_down_sample(voxel_size=0.005)
+        # downsample point cloud
+        pcd_cam = pcd_cam.voxel_down_sample(voxel_size=self.cfg['voxel_size_ds'])
         # print('Downsampled point cloud to {} points'.format(len(pcd_cam.points)))
 
         pc = np.asarray(pcd_cam.points)
@@ -85,10 +86,10 @@ class GraspnessNet:
         #         return
 
         gg = GraspGroup(preds)
-        # collision detection bewtween gripper and point cloud
-        collision_thresh = 0.01 # TODO: put this in config yaml
-        voxel_size_cd = 0.005 # TODO: config yaml
-        approach_dist = 0.05 # TODO: config yaml
+        # collision detection between gripper and point cloud
+        collision_thresh = self.cfg['collision_thresh']
+        voxel_size_cd = self.cfg['voxel_size_cd']
+        approach_dist = self.cfg['approach_dist']
         if collision_thresh > 0:
             cloud = data_dict['point_clouds']
             mfcdetector = ModelFreeCollisionDetector(cloud, voxel_size=voxel_size_cd)
@@ -102,15 +103,14 @@ class GraspnessNet:
         gg = gg.nms()
         # print('After NMS, grasp list has %d grasps.' % gg.__len__())
         gg = gg.sort_by_score()
-        # trim list?
-        # TODO: put this limit in config file
-        num_grasp_limit = 100
+        # trim list if it is too long
+        num_grasp_limit = self.cfg['num_grasp_limit']
         if gg.__len__() > num_grasp_limit:
             gg = gg[:num_grasp_limit]
         print('Final grasp list has %d grasps.' % gg.__len__())
 
         # from grippers, get grasp poses and gripper widths
-        # TODO: need to swap some axes here, since grasp frame is different than our baseline CGN parameterization
+        # need to swap some axes here, since grasp frame is different than our baseline CGN parameterization
         pred_grasp_array = np.zeros((len(gg),4,4))
         for i in range(len(gg)):
             g = gg[i]
@@ -119,7 +119,7 @@ class GraspnessNet:
             new_pose[:3,0] = g.rotation_matrix[:3,1]
             new_pose[:3,1] = g.rotation_matrix[:3,2]
             new_pose[:3,2] = g.rotation_matrix[:3,0]
-            offset_dist = g.depth + 0.05
+            offset_dist = g.depth + self.cfg['gripper_offset_dist']
             new_pose[:3,3] = g.translation - offset_dist*g.rotation_matrix[:3,0]
             pred_grasp_array[i,:4,:4] = new_pose
 
@@ -139,8 +139,9 @@ class GraspnessNet:
         # masked pc is numpy array
         # sample masked_pc random
 
-        num_points = 15000 # TODO: put this in config yaml file
-        voxel_size = 0.005 # TODO: this should also be in config yaml file
+        # these are the default values, they should not change
+        num_points = 15000
+        voxel_size = 0.005
 
         if len(masked_pc) >= num_points:
             idxs = np.random.choice(len(masked_pc), num_points, replace=False)

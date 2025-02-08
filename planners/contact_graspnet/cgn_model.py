@@ -19,17 +19,14 @@ class ContactGraspNet:
     :param cfg: config dict
     """
     def __init__(self, cfg):
-        self._contact_grasp_cfg = cfg
-
-        # TODO: move this to where it is actually used?
-        self._num_input_points = self._contact_grasp_cfg['DATA']['num_input_points']
+        self.cfg = cfg
 
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.model = ContactGraspnetModel(cfg, self.device)
         self.model.to(self.device)
         # load weights
-        checkpoint_state_dict = torch.load(self._contact_grasp_cfg['DATA']['checkpoint_path'], weights_only=False)
+        checkpoint_state_dict = torch.load(self.cfg['DATA']['checkpoint_path'], weights_only=False)
         model_state_dict = self.model.state_dict()
         for k, v in model_state_dict.items():
             if k in checkpoint_state_dict['model'].keys():
@@ -61,14 +58,15 @@ class ContactGraspNet:
         """
 
         # crop PC based on bounding box in world frame
-        # TODO: put this box size in config?
-        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.41]))
+        bb_center = np.array(self.cfg['PC']['bb_center'])
+        bb_dims = np.array(self.cfg['PC']['bb_dims'])
+        workspace_bb = o3d.geometry.OrientedBoundingBox(bb_center, np.eye(3), bb_dims)
         pcd_world = pcd_world.crop(workspace_bb)
         # get cropped point cloud in camera frame as well
         pcd_cam = copy.deepcopy(pcd_world).transform(np.linalg.inv(cam_extrinsics))
-        # TODO: downsample point cloud? put this voxel size in config?
+        # downsample point cloud
         # print('Cropped point cloud to {} points'.format(len(pcd_cam.points)))
-        pcd_cam = pcd_cam.voxel_down_sample(voxel_size=0.004)
+        pcd_cam = pcd_cam.voxel_down_sample(voxel_size=self.cfg['PC']['voxel_size_ds'])
         # print('Downsampled point cloud to {} points'.format(len(pcd_cam.points)))
 
         pc_full = np.asarray(pcd_cam.points)
@@ -102,31 +100,20 @@ class ContactGraspNet:
         """
 
         # regularize number of points in point cloud
-        # Convert point cloud coordinates from OpenCV to internal coordinates (x left, y up, z front)
-        # print('Total points:', len(pc))
-        # pc, pc_mean = preprocess_pc_for_inference(pc.squeeze(),
-        #                                         self._contact_grasp_cfg['DATA']['num_input_points'],
-        #                                         return_mean=True,
-        #                                         use_farthest_point=False, # TODO:  farthest point sampling shouldn't take this long!! if we use tensors, can copy function here
-        #                                         convert_to_internal_coords=convert_cam_coords)
-
-        # PULLING OUT PREPROCESS FUNCTION HERE
-        # regularize number of points in point cloud
-        use_farthest_point = False
-        if pc.shape[0] > self._contact_grasp_cfg['DATA']['num_input_points']:
-            if use_farthest_point:
+        if pc.shape[0] > self.cfg['DATA']['num_input_points']:
+            if self.cfg['DATA']['use_farthest_point']:
                 # TODO: this is still quite slow!
                 # create tensor from pc
                 pc_tensor = torch.from_numpy(pc).type(torch.float32).to(self.device)
                 pc_tensor = pc_tensor.unsqueeze(0)
                 # get farthest points
-                center_indexes = farthest_point_sample(pc_tensor, self._contact_grasp_cfg['DATA']['num_input_points']).squeeze().to('cpu').numpy()
-                # _, center_indexes = farthest_points(pc, self._contact_grasp_cfg['DATA']['num_input_points'], distance_by_translation_point, return_center_indexes=True)
+                center_indexes = farthest_point_sample(pc_tensor, self.cfg['DATA']['num_input_points']).squeeze().to('cpu').numpy()
+                # _, center_indexes = farthest_points(pc, self.cfg['DATA']['num_input_points'], distance_by_translation_point, return_center_indexes=True)
             else:
-                center_indexes = np.random.choice(range(pc.shape[0]), size=self._contact_grasp_cfg['DATA']['num_input_points'], replace=False)
+                center_indexes = np.random.choice(range(pc.shape[0]), size=self.cfg['DATA']['num_input_points'], replace=False)
             pc = pc[center_indexes, :]
         else:
-            required = self._contact_grasp_cfg['DATA']['num_input_points'] - pc.shape[0]
+            required = self.cfg['DATA']['num_input_points'] - pc.shape[0]
             if required > 0:
                 index = np.random.choice(range(pc.shape[0]), size=required)
                 pc = np.concatenate((pc, pc[index, :]), axis=0)
@@ -137,8 +124,6 @@ class ContactGraspNet:
         pc_mean = np.mean(pc, 0)
         # subtract mean
         pc -= np.expand_dims(pc_mean, 0)
-
-
 
         if len(pc.shape) == 2:
             pc_batch = pc[np.newaxis,:,:]
@@ -166,14 +151,14 @@ class ContactGraspNet:
         pred_grasps_cam[:,:3, 3] += pc_mean.reshape(-1,3)
         pred_points[:,:3] += pc_mean.reshape(-1,3)
         # limit gripper openings
-        gripper_openings = np.minimum(offset_pred + self._contact_grasp_cfg['TEST']['extra_opening'], self._contact_grasp_cfg['DATA']['gripper_width'])
+        gripper_openings = np.minimum(offset_pred + self.cfg['EVAL']['extra_opening'], self.cfg['DATA']['gripper_width'])
 
         selection_idcs = self.select_grasps(pred_points[:,:3], pred_scores,
-                                            self._contact_grasp_cfg['TEST']['max_farthest_points'],
-                                            self._contact_grasp_cfg['TEST']['num_samples'],
-                                            self._contact_grasp_cfg['TEST']['first_thres'],
-                                            self._contact_grasp_cfg['TEST']['second_thres'],
-                                            with_replacement=self._contact_grasp_cfg['TEST']['with_replacement'])
+                                            self.cfg['EVAL']['max_farthest_points'],
+                                            self.cfg['EVAL']['num_samples'],
+                                            self.cfg['EVAL']['first_thres'],
+                                            self.cfg['EVAL']['second_thres'],
+                                            with_replacement=self.cfg['EVAL']['with_replacement'])
 
         # if no grasps are selected, just select the one with the highest score
         if not np.any(selection_idcs):
@@ -476,17 +461,17 @@ class ContactGraspnetModel(nn.Module):
             torch.tensor -- bin value tensor
         """
         bins_bounds = np.array(self.data_config['labels']['offset_bins'])
-        if self.global_config['TEST']['bin_vals'] == 'max':
+        if self.global_config['EVAL']['bin_vals'] == 'max':
             bin_vals = (bins_bounds[1:] + bins_bounds[:-1])/2
             bin_vals[-1] = bins_bounds[-1]
-        elif self.global_config['TEST']['bin_vals'] == 'mean':
+        elif self.global_config['EVAL']['bin_vals'] == 'mean':
             bin_vals = bins_bounds[1:]
         else:
             raise NotImplementedError
 
-        if not self.global_config['TEST']['allow_zero_margin']:
+        if not self.global_config['EVAL']['allow_zero_margin']:
             bin_vals = np.minimum(bin_vals, self.global_config['DATA']['gripper_width'] \
-                                    -self.global_config['TEST']['extra_opening'])
+                                    -self.global_config['EVAL']['extra_opening'])
 
         bin_vals = torch.tensor(bin_vals, dtype=torch.float32).to(self.device)
         return bin_vals

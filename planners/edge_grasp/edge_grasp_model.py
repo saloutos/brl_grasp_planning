@@ -22,17 +22,17 @@ from .edge_grasp_utils import *
 # NOTE: structure of original edge grasper seemed really nice for training, testing, saving, loading, etc!
 class EdgeGraspNet:
     def __init__(self, cfg) :
-        self._edge_grasp_cfg = cfg
+        self.cfg = cfg
 
         # instantiate model
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.position_emd = self._edge_grasp_cfg['MODEL']['position_emd']
-        self.sample_number = self._edge_grasp_cfg['MODEL']['sample_num']
-        self.model = EdgeGraspModel(device=self.device, sample_num=self.sample_number, lr=self._edge_grasp_cfg['MODEL']['learning_rate'])
+        self.position_emd = self.cfg['MODEL']['position_emd']
+        self.sample_number = self.cfg['MODEL']['sample_num']
+        self.model = EdgeGraspModel(device=self.device, sample_num=self.sample_number, lr=self.cfg['MODEL']['learning_rate'])
 
         # load weights
-        checkpoint_dir = self._edge_grasp_cfg['DATA']['checkpoint_dir']
-        n_iter = self._edge_grasp_cfg['DATA']['checkpoint_iter']
+        checkpoint_dir = self.cfg['DATA']['checkpoint_dir']
+        n_iter = self.cfg['DATA']['checkpoint_iter']
         fname1 = checkpoint_dir + 'local_emd_model-ckpt-%d.pt' % n_iter
         fname2 = checkpoint_dir + 'global_emd_model-ckpt-%d.pt' % n_iter
         fname3 = checkpoint_dir + 'classifier_model-ckpt-%d.pt' % n_iter
@@ -44,8 +44,9 @@ class EdgeGraspNet:
         # pre-process point clouds
 
         # crop PC based on bounding box in world frame
-        # TODO: put this box size in config?
-        workspace_bb = o3d.geometry.OrientedBoundingBox(np.array([0.0, 0.0, 0.2]), np.eye(3), np.array([0.7, 0.6, 0.39]))
+        bb_center = np.array(self.cfg['PC']['bb_center'])
+        bb_dims = np.array(self.cfg['PC']['bb_dims'])
+        workspace_bb = o3d.geometry.OrientedBoundingBox(bb_center, np.eye(3), bb_dims)
         pc_input = pc_input.crop(workspace_bb)
 
         # TODO: could put these filtering parameters into config file
@@ -54,10 +55,9 @@ class EdgeGraspNet:
         pc_input.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.04, max_nn=30))
         # pc_input.orient_normals_consistent_tangent_plane(30) # this takes like 1 second
         # orient normals towards camera to make sure they don't point inside objects
-        # TODO: should this camera direction be in config file? passed into this function as cam_extrinsic argument?
-        pc_input.orient_normals_to_align_with_direction(orientation_reference=np.array([0, -0.4, 0.8]))
+        pc_input.orient_normals_to_align_with_direction(orientation_reference=np.array(self.cfg['PC']['normal_align_dir']))
         # finally, downsample based on voxel size
-        pc_input = pc_input.voxel_down_sample(voxel_size=0.004)
+        pc_input = pc_input.voxel_down_sample(voxel_size=self.cfg['PC']['voxel_size_ds'])
 
         # sample edges
 
@@ -116,21 +116,21 @@ class EdgeGraspNet:
         # filter on approach direction by taking dot product with world z-axis
         # don't want to approach from too far "below" horizontal
         up_dot_vals = torch.einsum('ik,k->i', valid_edge_approach, torch.tensor([0., 0., 1.]).to(self.device))
-        up_dot_mask = (up_dot_vals > self._edge_grasp_cfg['EVAL']['up_dot_th'])
+        up_dot_mask = (up_dot_vals > self.cfg['EVAL']['up_dot_th'])
         # print('Up dot:', up_dot_mask.sum())
 
         # make sure contact point and approach point aren't too far from each other
         relative_norm = torch.linalg.norm(relative_pos, dim=-1)
-        rel_norm_mask = torch.logical_and(relative_norm > self._edge_grasp_cfg['EVAL']['rel_norm_min'],
-                                            relative_norm < self._edge_grasp_cfg['EVAL']['rel_norm_max'])
+        rel_norm_mask = torch.logical_and(relative_norm > self.cfg['EVAL']['rel_norm_min'],
+                                            relative_norm < self.cfg['EVAL']['rel_norm_max'])
         # print('Rel norm:', rel_norm_mask.sum())
 
         # calculate grasp depth between approach point and contact points
         # contact point should be further than approach point, but not too far
         # TODO: check if this is correct way to take dot product?
         depth_proj = -torch.sum(relative_pos * valid_edge_approach, dim=-1)
-        depth_proj_mask =   torch.logical_and(depth_proj > self._edge_grasp_cfg['EVAL']['depth_proj_min'],
-                                                depth_proj < self._edge_grasp_cfg['EVAL']['depth_proj_max'])
+        depth_proj_mask =   torch.logical_and(depth_proj > self.cfg['EVAL']['depth_proj_min'],
+                                                depth_proj < self.cfg['EVAL']['depth_proj_max'])
         # print('Depth proj:', depth_proj_mask.sum())
 
         # build geometry mask
@@ -138,11 +138,11 @@ class EdgeGraspNet:
         # print('All geometry:', geometry_mask.sum())
 
         # check table collisions based on z height
-        if self._edge_grasp_cfg['EVAL']['check_gripper_collisions']:
+        if self.cfg['EVAL']['check_gripper_collisions']:
             # first, need to build grasp poses from candidate edges
             tic = time.time()
             pose_candidates = orthogonal_grasps(geometry_mask, depth_proj, valid_edge_approach, des_normals, sample_pos)
-            table_grasp_mask = get_gripper_points_mask(pose_candidates, z_threshold=self._edge_grasp_cfg['EVAL']['gripper_z_th'])
+            table_grasp_mask = get_gripper_points_mask(pose_candidates, z_threshold=self.cfg['EVAL']['gripper_z_th'])
             geometry_mask[geometry_mask == True] = table_grasp_mask
             # print('All geometry after table collisions:', geometry_mask.sum())
 
@@ -151,7 +151,7 @@ class EdgeGraspNet:
         print('Number of candidates after filtering: ', len(edge_sample_index))
 
         # actually evaluate model for these edges
-        max_num_edges = self._edge_grasp_cfg['EVAL']['max_edges']
+        max_num_edges = self.cfg['EVAL']['max_edges']
         if len(edge_sample_index) > 0:
             # if there are too many, randomly sample
             if len(edge_sample_index) > max_num_edges:
@@ -171,7 +171,7 @@ class EdgeGraspNet:
 
             # select grasps based on threshold
             all_scores = F.sigmoid(score)
-            grasp_mask = (all_scores > self._edge_grasp_cfg['EVAL']['selection_th'])
+            grasp_mask = (all_scores > self.cfg['EVAL']['selection_th'])
             masked_scores = all_scores[grasp_mask]
             # print('Number of grasps selected: ', len(masked_scores))
 
@@ -185,10 +185,9 @@ class EdgeGraspNet:
             masked_poses = orthogonal_grasps(grasp_mask, depth_projection, approaches, des_normals, sample_pos)
 
             # calculate grasp widths
-            # TODO: put this in config?
-            grasp_clearance = 0.005 #0.016
+            grasp_clearance = self.cfg['EVAL']['grasp_clearance']
             widths = torch.abs(torch.sum(data.relative_pos * des_normals, dim=-1)) + grasp_clearance
-            widths = widths[grasp_mask].clip(max=0.04)
+            widths = widths[grasp_mask].clip(max=0.5*self.cfg['EVAL']['max_grasp_width'])
             widths = (widths * 2)
 
             # move to CPU
@@ -197,13 +196,13 @@ class EdgeGraspNet:
             gripper_widths = widths.detach().cpu().numpy()
 
             # limit number of grasps returned
-            if len(grasp_scores) > self._edge_grasp_cfg['EVAL']['max_grasps']:
+            if len(grasp_scores) > self.cfg['EVAL']['max_grasps']:
                 # sort by score
                 sort_idx = np.argsort(grasp_scores)[::-1]
                 # limit to max number
-                pred_grasps = pred_grasps[sort_idx[:self._edge_grasp_cfg['EVAL']['max_grasps']]]
-                grasp_scores = grasp_scores[sort_idx[:self._edge_grasp_cfg['EVAL']['max_grasps']]]
-                gripper_widths = gripper_widths[sort_idx[:self._edge_grasp_cfg['EVAL']['max_grasps']]]
+                pred_grasps = pred_grasps[sort_idx[:self.cfg['EVAL']['max_grasps']]]
+                grasp_scores = grasp_scores[sort_idx[:self.cfg['EVAL']['max_grasps']]]
+                gripper_widths = gripper_widths[sort_idx[:self.cfg['EVAL']['max_grasps']]]
             else:
                 # just sort
                 sort_idx = np.argsort(grasp_scores)[::-1]

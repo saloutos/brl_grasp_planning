@@ -1,4 +1,36 @@
-DATA:
-  checkpoint_path: /planners/contact_graspnet/checkpoints/model.pt
-MODEL:
-  asymmetric_model: true
+checkpoint_path: 'planners/graspness/checkpoints/minkuresunet_realsense.tar'
+
+# box center
+bb_center: [0.0, 0.0, 0.2]
+# box dimensions
+bb_dims: [0.7, 0.6, 0.39]
+
+voxel_size_ds: 0.005
+
+# real-world filters
+# NOTE: don't use these right now
+vertical_angle_thresh: 0.9
+max_width: 0.09
+# worksapce limits
+x_lim: [-0.35, 0.35]
+y_lim: [-0.3, 0.3]
+z_lim: [0.1, 0.5]
+
+# collision detection between gripper and point cloud
+collision_thresh: 0.01
+voxel_size_cd: 0.005
+approach_dist: 0.05
+
+num_grasp_limit: 100
+
+gripper_offset_dist: 0.05
+
+# from pred_decode function?
+# from other utils functions?
+# should these be here? would need to move utils functions to main file
+# GRASP_MAX_WIDTH: 0.1
+# GRASPNESS_THRESHOLD: 0.1
+# NUM_VIEW: 300
+# NUM_ANGLE: 12
+# NUM_DEPTH: 4
+# M_POINT: 1024
