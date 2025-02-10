@@ -28,7 +28,7 @@ EVAL:
 
 PC:
   bb_center: [0.0, 0.0, 0.2]
-  bb_dims: [0.7, 0.6, 0.39]
+  bb_dims: [0.7, 0.6, 0.38]
   normal_align_dir: [0.0, -0.4, 0.8]
   voxel_size_ds: 0.004
 

@@ -117,8 +117,21 @@ class GraspnessNet:
         # filter grasps based on approach angle
         up_dot_mask = (np.dot(-pred_grasps_world[:,:3,2], np.array([0,0,1])) > self.cfg['up_dot_th'])
 
-        # TODO: filter grasps based on z-height of gripper control points (not just base)
-        z_height_mask = (pred_grasps_world[:,2,3] > self.cfg['gripper_z_th'])
+        # filter grasps based on z-height of gripper control points
+        # z_height_mask = (pred_grasps_world[:,2,3] > self.cfg['EVAL']['gripper_z_th'])
+        z_height_mask = np.zeros_like(up_dot_mask)
+        gripper_pts = np.array([[0.0, 0.0, 0.0],
+                                [0.0, 0.0, 5.84000014e-02],
+                                [5.26874326e-02, 0.0, 5.84000014e-02],
+                                [5.26874326e-02, 0.0, 1.05273142e-01],
+                                [-5.26874326e-02, 0.0, 5.84000014e-02],
+                                [-5.26874326e-02, 0.0, 1.05273142e-01]])
+        for i,g in enumerate(pred_grasps_world):
+            world_pts = np.matmul(g[:3,:3], gripper_pts.T).T + g[:3,3]
+            # get z-height of gripper control points
+            z_heights = world_pts[:,2]
+            # mask if all z_heights are above threshold
+            z_height_mask[i] = np.all(z_heights > self.cfg['gripper_z_th'])
 
         # apply masks
         grasp_mask = np.logical_and(up_dot_mask, z_height_mask)

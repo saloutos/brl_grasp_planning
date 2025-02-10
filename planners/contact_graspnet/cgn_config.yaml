@@ -1,13 +1,15 @@
 PC:
   bb_center: [0.0, 0.0, 0.2]
-  bb_dims: [0.7, 0.6, 0.41]
+  bb_dims_no_table: [0.7, 0.6, 0.38]
+  bb_offset: 0.1
+  bb_dims: [0.7, 0.6, 0.42]
   voxel_size_ds: 0.004
 
 
 EVAL:
 
   up_dot_th: 0.1
-  gripper_z_th: 0.005
+  gripper_z_th: 0.001
   num_grasps_return: 100
 
   allow_zero_margin: 0

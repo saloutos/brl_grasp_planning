@@ -59,9 +59,21 @@ class ContactGraspNet:
 
         # crop PC based on bounding box in world frame
         bb_center = np.array(self.cfg['PC']['bb_center'])
-        bb_dims = np.array(self.cfg['PC']['bb_dims'])
-        workspace_bb = o3d.geometry.OrientedBoundingBox(bb_center, np.eye(3), bb_dims)
-        pcd_world = pcd_world.crop(workspace_bb)
+        bb_dims1 = np.array(self.cfg['PC']['bb_dims_no_table'])
+        bb_dims2 = np.array(self.cfg['PC']['bb_dims'])
+        bb_offset = self.cfg['PC']['bb_offset']
+        # first, crop without the table to get (x,y) limits
+        workspace_bb1 = o3d.geometry.OrientedBoundingBox(bb_center, np.eye(3), bb_dims1)
+        pcd_crop = pcd_world.crop(workspace_bb1)
+        min_bound = pcd_crop.get_min_bound()
+        max_bound = pcd_crop.get_max_bound()
+        # set new (x,y) sizes based on these bounds, plus 10cm buffer
+        bb_center[0] = (min_bound[0]+max_bound[0])/2
+        bb_center[1] = (min_bound[1]+max_bound[1])/2
+        bb_dims2[0] = max_bound[0]-min_bound[0]+bb_offset
+        bb_dims2[1] = max_bound[1]-min_bound[0]+bb_offset
+        workspace_bb2 = o3d.geometry.OrientedBoundingBox(bb_center, np.eye(3), bb_dims2)
+        pcd_world = pcd_world.crop(workspace_bb2)
         # get cropped point cloud in camera frame as well
         pcd_cam = copy.deepcopy(pcd_world).transform(np.linalg.inv(cam_extrinsics))
         # downsample point cloud
@@ -85,8 +97,21 @@ class ContactGraspNet:
         # filter grasps based on approach angle
         up_dot_mask = (np.dot(-pred_grasps_world[:,:3,2], np.array([0,0,1])) > self.cfg['EVAL']['up_dot_th'])
 
-        # TODO: filter grasps based on z-height of gripper control points (not just base)
-        z_height_mask = (pred_grasps_world[:,2,3] > self.cfg['EVAL']['gripper_z_th'])
+        # filter grasps based on z-height of gripper control points
+        # z_height_mask = (pred_grasps_world[:,2,3] > self.cfg['EVAL']['gripper_z_th'])
+        z_height_mask = np.zeros_like(up_dot_mask)
+        gripper_pts = np.array([[0.0, 0.0, 0.0],
+                                [0.0, 0.0, 5.84000014e-02],
+                                [5.26874326e-02, 0.0, 5.84000014e-02],
+                                [5.26874326e-02, 0.0, 1.05273142e-01],
+                                [-5.26874326e-02, 0.0, 5.84000014e-02],
+                                [-5.26874326e-02, 0.0, 1.05273142e-01]])
+        for i,g in enumerate(pred_grasps_world):
+            world_pts = np.matmul(g[:3,:3], gripper_pts.T).T + g[:3,3]
+            # get z-height of gripper control points
+            z_heights = world_pts[:,2]
+            # mask if all z_heights are above threshold
+            z_height_mask[i] = np.all(z_heights > self.cfg['EVAL']['gripper_z_th'])
 
         # apply masks
         grasp_mask = np.logical_and(up_dot_mask, z_height_mask)

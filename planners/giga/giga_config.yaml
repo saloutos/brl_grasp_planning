@@ -20,5 +20,5 @@ grasp_offset_dist: 0.05
 debug_vis: False
 
 
-up_dot_th: 0.8
-gripper_z_th: 0.1
+up_dot_th: 0.5
+gripper_z_th: 0.001

@@ -104,7 +104,7 @@ def capture_scene(viewer, model, data, cam_name):
 
     ### ADD NOISE TO DEPTH IMAGE ###
     # TODO: make this more realistic?
-    depth_noise = np.random.normal(loc=0.0, scale=0.003, size=depth_array.shape)
+    depth_noise = np.random.normal(loc=0.0, scale=0.001, size=depth_array.shape)
     depth_array += depth_noise
 
     # --- Process image --- #
