@@ -102,6 +102,11 @@ def capture_scene(viewer, model, data, cam_name):
     # convert from raw depth to metric depth
     depth_array = z_near / (1 - depth_array * (1 - z_near / z_far))
 
+    ### ADD NOISE TO DEPTH IMAGE ###
+    # TODO: make this more realistic?
+    depth_noise = np.random.normal(loc=0.0, scale=0.003, size=depth_array.shape)
+    depth_array += depth_noise
+
     # --- Process image --- #
     cam_xpos = data.cam_xpos[cam_id]
     cam_xmat = data.cam_xmat[cam_id]
@@ -172,7 +177,10 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     pcd_cam4, pcd_world4, cam_extrinsics4, cam_intrinsics4, rgb_array4, depth_array4 = capture_scene(viewer, model, data, "overhead_cam4")
     # merge world point clouds
     full_pcd_world = pcd_world + pcd_world2 + pcd_world3 + pcd_world4
-    full_pcd_world = full_pcd_world.voxel_down_sample(voxel_size=0.002) # TODO: tune this downsample parameter?
+    # cropp and downsample
+    bounding_box = o3d.geometry.AxisAlignedBoundingBox(min_bound=(-0.6, -0.6, -0.1), max_bound=(0.6, 0.6, 0.5))
+    full_pcd_world = full_pcd_world.crop(bounding_box)
+    full_pcd_world = full_pcd_world.voxel_down_sample(voxel_size=0.002)
     # could crop and then convert full world pc to any camera frame here
     render_toc = time.time() - render_tic
 
@@ -372,7 +380,8 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     print('EdgeGraspNet: {:.3f} seconds.'.format(edge_toc))
     print('Graspness: {:.3f} seconds.'.format(gsnet_toc))
     print('GIGA: {:.3f} seconds.'.format(giga_toc))
-    # create plotting window
+    # plotting
+    # plot_grasp_scores([cgn_grasp_scores1, edge_grasp_scores1, gsnet_grasp_scores1, giga_grasp_scores1], rgba=[(1,0,0), (1, 0.6, 0.1), (0,1,0), (0,0.7,1)])
     # vis_grasps_many_planners(full_pcd_world,
     #                         [cgn_grasp_poses_world1, edge_grasp_poses_world1, gsnet_grasp_poses_world1, giga_grasp_poses_world1],
     #                         [(1,0,0), (1, 0.6, 0.1), (0,1,0), (0,0.7,1)])

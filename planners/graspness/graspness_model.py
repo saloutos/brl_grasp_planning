@@ -72,21 +72,8 @@ class GraspnessNet:
         preds = grasp_preds[0].detach().cpu().numpy()
         # print('Initial grasp list has %d grasps.' % len(preds))
 
-        # Filtering grasp poses for real-world execution.
-        # The first mask preserves the grasp poses that are within a 30-degree angle with the vertical pose and have a width of less than 9cm.
-        # mask = (preds[:,10] > 0.9) & (preds[:,1] < 0.09)
-        # The second mask preserves the grasp poses within the workspace of the robot.
-        # workspace_mask = (preds[:,13] > -0.20) & (preds[:,13] < 0.21) & (preds[:,14] > -0.06) & (preds[:,14] < 0.18) & (preds[:,15] > 0.63) 
-        # preds = preds[mask & workspace_mask]
-
-        # print('After filtering, grasp list has %d grasps.' % len(preds))
-
-        # if len(preds) == 0:
-        #         print('No grasp detected after masking')
-        #         return
-
         gg = GraspGroup(preds)
-        # collision detection between gripper and point cloud
+        # collision detection between gripper and point cloud (both in camera frame)
         collision_thresh = self.cfg['collision_thresh']
         voxel_size_cd = self.cfg['voxel_size_cd']
         approach_dist = self.cfg['approach_dist']
@@ -103,11 +90,6 @@ class GraspnessNet:
         gg = gg.nms()
         # print('After NMS, grasp list has %d grasps.' % gg.__len__())
         gg = gg.sort_by_score()
-        # trim list if it is too long
-        num_grasp_limit = self.cfg['num_grasp_limit']
-        if gg.__len__() > num_grasp_limit:
-            gg = gg[:num_grasp_limit]
-        print('Final grasp list has %d grasps.' % gg.__len__())
 
         # from grippers, get grasp poses and gripper widths
         # need to swap some axes here, since grasp frame is different than our baseline CGN parameterization
@@ -131,6 +113,27 @@ class GraspnessNet:
         pred_grasps_world = np.zeros_like(pred_grasp_array)
         for i,g in enumerate(pred_grasp_array):
             pred_grasps_world[i,:4,:4] = np.matmul(cam_extrinsics, g)
+
+        # filter grasps based on approach angle
+        up_dot_mask = (np.dot(-pred_grasps_world[:,:3,2], np.array([0,0,1])) > self.cfg['up_dot_th'])
+
+        # TODO: filter grasps based on z-height of gripper control points (not just base)
+        z_height_mask = (pred_grasps_world[:,2,3] > self.cfg['gripper_z_th'])
+
+        # apply masks
+        grasp_mask = np.logical_and(up_dot_mask, z_height_mask)
+        pred_grasps_world = pred_grasps_world[grasp_mask]
+        scores = scores[grasp_mask]
+        gripper_openings = gripper_openings[grasp_mask]
+
+        # trim list if it is too long
+        num_grasp_limit = self.cfg['num_grasp_limit']
+        if len(scores) > num_grasp_limit:
+            scores = scores[:num_grasp_limit]
+            pred_grasps_world = pred_grasps_world[:num_grasp_limit]
+            gripper_openings = gripper_openings[:num_grasp_limit]
+        print("Returning %d grasps after filtering." % len(scores))
+
         # return grasps, scores, and grasp widths
         return pred_grasps_world, scores, gripper_openings, pcd_world
 

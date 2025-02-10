@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import mujoco.viewer
 import yaml
 from scipy.spatial.transform import Rotation
+# import skimage.transform
 
 # TODO: get rid of this function
 def get_base_path():
@@ -416,6 +417,61 @@ class CameraIntrinsic(object):
         return intrinsic
 
 
+# # functions for applying different noise types to depth image
+# # taken from GIGA repo
+# def apply_noise(img, noise_type='norm'):
+#     if noise_type == 'norm':
+#         return apply_gaussian_noise(img)
+#     elif noise_type == 'dex':
+#         return apply_dex_noise(img)
+#     elif noise_type =='trans':
+#         return apply_translational_noise(img)
+#     else:
+#         return img
+
+# def apply_dex_noise(img,
+#                 gamma_shape=1000,
+#                 gamma_scale=0.001,
+#                 gp_sigma=0.005,
+#                 gp_scale=4.0,
+#                 gp_rate=0.5):
+#     gamma_noise = np.random.gamma(gamma_shape, gamma_scale)
+#     img = img * gamma_noise
+#     if np.random.rand() < gp_rate:
+#         h, w = img.shape[:2]
+#         gp_sample_height = int(h / gp_scale)
+#         gp_sample_width = int(w / gp_scale)
+#         gp_num_pix = gp_sample_height * gp_sample_width
+#         gp_noise = np.random.randn(gp_sample_height, gp_sample_width) * gp_sigma
+#         gp_noise = skimage.transform.resize(gp_noise,
+#                                             img.shape[:2],
+#                                             order=1,
+#                                             anti_aliasing=False,
+#                                             mode="constant")
+#         img += gp_noise
+#     return img
+
+# def apply_translational_noise(img,
+#                             sigma_p=1,
+#                             sigma_d=0.005):
+#     h, w = img.shape[:2]
+#     hs = np.arange(h)
+#     ws = np.arange(w)
+#     ww, hh = np.meshgrid(ws, hs)
+#     hh = hh + np.random.randn(*hh.shape) * sigma_p
+#     ww = ww + np.random.randn(*ww.shape) * sigma_p
+#     hh = np.clip(np.round(hh), 0, h-1).astype(int)
+#     ww = np.clip(np.round(ww), 0, w-1).astype(int)
+#     new_img = img[hh, ww]
+#     new_img += np.random.randn(*new_img.shape) * sigma_d
+#     return new_img
+
+# def apply_gaussian_noise(img, sigma=0.001):
+#     img += np.random.randn(*img.shape) * sigma
+#     return img
+
+
+
 ### GRASP PLOTTING STUFF ###
 
 def vis_grasps_many_planners(pcd_input, pred_grasps=[], pred_grasp_colors=[], other_frames=[]):
@@ -707,6 +763,14 @@ def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), plot_best=True, scores=N
     viewer.sync()
 
 
-
-
-
+def plot_grasp_scores(scores, rgba=None):
+    plt.figure()
+    if rgba is not None:
+        plt.hist(scores, color=rgba, bins=np.arange(11)/10.0)
+    else:
+        plt.hist(scores, bins=np.arange(11)/10.0)
+    plt.ylabel('Frequency')
+    plt.xlabel('Score')
+    plt.title('Grasp Scores')
+    plt.show()
+    return

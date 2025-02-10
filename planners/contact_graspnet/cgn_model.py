@@ -81,6 +81,28 @@ class ContactGraspNet:
         for i,g in enumerate(pred_grasps_cam):
             pred_grasps_world[i,:4,:4] = np.matmul(cam_extrinsics, g)
             contact_pts_world[i] = np.matmul(cam_extrinsics[:3,:3], contact_pts[i]) + cam_extrinsics[:3,3]
+
+        # filter grasps based on approach angle
+        up_dot_mask = (np.dot(-pred_grasps_world[:,:3,2], np.array([0,0,1])) > self.cfg['EVAL']['up_dot_th'])
+
+        # TODO: filter grasps based on z-height of gripper control points (not just base)
+        z_height_mask = (pred_grasps_world[:,2,3] > self.cfg['EVAL']['gripper_z_th'])
+
+        # apply masks
+        grasp_mask = np.logical_and(up_dot_mask, z_height_mask)
+        pred_grasps_world = pred_grasps_world[grasp_mask]
+        scores = scores[grasp_mask]
+        contact_pts_world = contact_pts_world[grasp_mask]
+        gripper_openings = gripper_openings[grasp_mask]
+
+        # limit number of grasps to return?
+        if len(scores) > self.cfg['EVAL']['num_grasps_return']:
+            pred_grasps_world = pred_grasps_world[:self.cfg['EVAL']['num_grasps_return']]
+            scores = scores[:self.cfg['EVAL']['num_grasps_return']]
+            contact_pts_world = contact_pts_world[:self.cfg['EVAL']['num_grasps_return']]
+            gripper_openings = gripper_openings[:self.cfg['EVAL']['num_grasps_return']]
+        print('Returning {} grasps'.format(len(pred_grasps_world)))
+
         # TODO: add contact points to point cloud before returning?
 
         return pred_grasps_world, scores, gripper_openings, pcd_world
@@ -150,12 +172,17 @@ class ContactGraspNet:
         # uncenter grasps
         pred_grasps_cam[:,:3, 3] += pc_mean.reshape(-1,3)
         pred_points[:,:3] += pc_mean.reshape(-1,3)
+        # convert back to opencv coordinates
+        if convert_cam_coords:
+            pred_grasps_cam[:,:2, :] *= -1
+            pred_points[:,:2] *= -1
+
         # limit gripper openings
         gripper_openings = np.minimum(offset_pred + self.cfg['EVAL']['extra_opening'], self.cfg['DATA']['gripper_width'])
 
         selection_idcs = self.select_grasps(pred_points[:,:3], pred_scores,
                                             self.cfg['EVAL']['max_farthest_points'],
-                                            self.cfg['EVAL']['num_samples'],
+                                            self.cfg['EVAL']['num_grasps_sample'],
                                             self.cfg['EVAL']['first_thres'],
                                             self.cfg['EVAL']['second_thres'],
                                             with_replacement=self.cfg['EVAL']['with_replacement'])
@@ -165,15 +192,10 @@ class ContactGraspNet:
             # selection_idcs=np.array([], dtype=np.int32)
             selection_idcs = np.array([np.argmax(pred_scores)])
 
-        # convert back to opencv coordinates
-        if convert_cam_coords:
-            pred_grasps_cam[:,:2, :] *= -1
-            pred_points[:,:2] *= -1
-
         # sort by score, then return
         sorted_idcs = selection_idcs[np.argsort(pred_scores[selection_idcs])[::-1]]
         # return grasps, scores, points, and widths, based on grasp selection
-        return pred_grasps_cam[sorted_idcs], pred_scores[sorted_idcs], pred_points[sorted_idcs], gripper_openings[sorted_idcs].squeeze()
+        return pred_grasps_cam[sorted_idcs], pred_scores[sorted_idcs], pred_points[sorted_idcs], gripper_openings[sorted_idcs]
 
     # helper functions
     def select_grasps(self, contact_pts, contact_conf, max_farthest_points=150, num_grasps=200, first_thres=0.25, second_thres=0.2, with_replacement=False):

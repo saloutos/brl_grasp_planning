@@ -51,7 +51,7 @@ class EdgeGraspNet:
 
         # TODO: could put these filtering parameters into config file
         # pc_input, ind = pc_input.remove_statistical_outlier(nb_neighbors=10, std_ratio=2.0) # remove points that are further away from their neighbores than average
-        pc_input, ind = pc_input.remove_radius_outlier(nb_points=30, radius=0.03) # remove points that have less than nb_points in radius
+        # pc_input, ind = pc_input.remove_radius_outlier(nb_points=30, radius=0.03) # remove points that have less than nb_points in radius
         pc_input.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.04, max_nn=30))
         # pc_input.orient_normals_consistent_tangent_plane(30) # this takes like 1 second
         # orient normals towards camera to make sure they don't point inside objects
@@ -140,7 +140,6 @@ class EdgeGraspNet:
         # check table collisions based on z height
         if self.cfg['EVAL']['check_gripper_collisions']:
             # first, need to build grasp poses from candidate edges
-            tic = time.time()
             pose_candidates = orthogonal_grasps(geometry_mask, depth_proj, valid_edge_approach, des_normals, sample_pos)
             table_grasp_mask = get_gripper_points_mask(pose_candidates, z_threshold=self.cfg['EVAL']['gripper_z_th'])
             geometry_mask[geometry_mask == True] = table_grasp_mask

@@ -283,13 +283,26 @@ class GIGANet:
         grasp_poses_array = np.zeros((len(all_scores),4,4))
         for i in range(len(all_scores)):
             grasp_poses_array[i,:4,:4] = sorted_grasps[i]
+        scores = np.asarray(sorted_scores)
+        widths = np.asarray(sorted_widths)
+
+        # filter grasps based on approach angle
+        up_dot_mask = (np.dot(-grasp_poses_array[:,:3,2], np.array([0,0,1])) > self.cfg['up_dot_th'])
+
+        # TODO: filter grasps based on z-height of gripper control points (not just base)
+        z_height_mask = (grasp_poses_array[:,2,3] > self.cfg['gripper_z_th'])
+
+        # apply masks
+        grasp_mask = np.logical_and(up_dot_mask, z_height_mask)
+        grasp_poses_array = grasp_poses_array[grasp_mask]
+        scores = scores[grasp_mask]
+        widths = widths[grasp_mask]
 
         # TODO: limit number of grasps here? set limit to 100?
-
         print("Final number of grasps:", len(sorted_grasps))
 
         # return grasps, scores, widths
-        return grasp_poses_array, np.asarray(sorted_scores), np.asarray(sorted_widths), full_grasp_pcd
+        return grasp_poses_array, scores, widths, full_grasp_pcd
 
 
 

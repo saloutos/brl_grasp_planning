@@ -5,11 +5,16 @@ PC:
 
 
 EVAL:
+
+  up_dot_th: 0.1
+  gripper_z_th: 0.005
+  num_grasps_return: 100
+
   allow_zero_margin: 0
   bin_vals: max
   extra_opening: 0.005
   filter_thres: 0.0001
-  num_samples: 100
+  num_grasps_sample: 200
   max_farthest_points: 50
   first_thres: 0.2
   second_thres: 0.05
