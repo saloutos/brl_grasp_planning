@@ -135,9 +135,10 @@ class GraspnessNet:
 
         # apply masks
         grasp_mask = np.logical_and(up_dot_mask, z_height_mask)
-        pred_grasps_world = pred_grasps_world[grasp_mask]
-        scores = scores[grasp_mask]
-        gripper_openings = gripper_openings[grasp_mask]
+        if self.cfg['apply_geom_mask']:
+            pred_grasps_world = pred_grasps_world[grasp_mask]
+            scores = scores[grasp_mask]
+            gripper_openings = gripper_openings[grasp_mask]
 
         # trim list if it is too long
         num_grasp_limit = self.cfg['num_grasp_limit']

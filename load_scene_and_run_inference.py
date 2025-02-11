@@ -37,7 +37,7 @@ spec = mujoco.MjSpec.from_file(scene_path)
 # single object to grasp
 # load_objects_from_yaml(spec, "primitives/single_objects/fixed/box_7.yaml", pos=[0,0,0.05], rpy=[90,30,30])
 # load_objects_from_yaml(spec, "primitives/single_objects/fixed/cylinder_3.yaml", pos=[0,0,0.05], rpy=[0,0,0])
-load_objects_from_yaml(spec, 'primitives/collections/panda_graspable/scene_0.yaml')
+load_objects_from_yaml(spec, 'primitives/collections/panda_graspable/scene_9.yaml')
 
 model = spec.compile()
 data = mujoco.MjData(model)
@@ -150,6 +150,8 @@ n_grasps  = 0
 n_frame_geoms = 0
 cam_vis_idx = None
 
+GRASP_LIMIT = 10
+
 # init mujoco viewer
 with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui=False) as viewer:
 
@@ -177,7 +179,7 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     pcd_cam4, pcd_world4, cam_extrinsics4, cam_intrinsics4, rgb_array4, depth_array4 = capture_scene(viewer, model, data, "overhead_cam4")
     # merge world point clouds
     full_pcd_world = pcd_world + pcd_world2 + pcd_world3 + pcd_world4
-    # cropp and downsample
+    # crop and downsample
     bounding_box = o3d.geometry.AxisAlignedBoundingBox(min_bound=(-0.6, -0.6, -0.1), max_bound=(0.6, 0.6, 0.5))
     full_pcd_world = full_pcd_world.crop(bounding_box)
     full_pcd_world = full_pcd_world.voxel_down_sample(voxel_size=0.002)
@@ -200,7 +202,16 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     # cgn_grasp_poses_world2, cgn_grasp_scores2, cgn_grasp_widths2, cgn_pcd_world2 = cgn.predict_scene_grasps(pcd_world2, cam_extrinsics2)
     # cgn_grasp_poses_world3, cgn_grasp_scores3, cgn_grasp_widths3, cgn_pcd_world3 = cgn.predict_scene_grasps(pcd_world3, cam_extrinsics3)
     # cgn_grasp_poses_world4, cgn_grasp_scores4, cgn_grasp_widths4, cgn_pcd_world4 = cgn.predict_scene_grasps(pcd_world4, cam_extrinsics4)
+
+    # cgn_grasp_poses_world5, cgn_grasp_scores5, cgn_grasp_widths5, cgn_pcd_world5 = cgn.predict_scene_grasps(pcd_world + pcd_world2, cam_extrinsics)
+    # cgn_grasp_poses_world6, cgn_grasp_scores6, cgn_grasp_widths6, cgn_pcd_world6 = cgn.predict_scene_grasps(pcd_world + pcd_world3, cam_extrinsics)
+    # cgn_grasp_poses_world7, cgn_grasp_scores7, cgn_grasp_widths7, cgn_pcd_world7 = cgn.predict_scene_grasps(full_pcd_world, cam_extrinsics)
+
     cgn_toc = time.time() - cgn_tic
+
+    cgn_grasp_poses_world1 = cgn_grasp_poses_world1[:GRASP_LIMIT]
+    cgn_grasp_scores1 = cgn_grasp_scores1[:GRASP_LIMIT]
+    cgn_grasp_widths1 = cgn_grasp_widths1[:GRASP_LIMIT]
 
     # can also add contact points to visualzation (need to return contact points from cgn again)
     # cgn_contact_pts1 += 0.0005 # small displacement to avoid overlap with object
@@ -227,8 +238,21 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     #                 plot_origin=True,
     #                 gripper_openings=cgn_grasp_widths4)
 
+    # visualize_grasps(cgn_pcd_world5, cgn_grasp_poses_world5, cgn_grasp_scores5,
+    #                 window_name = 'ContactGraspNet 1+2',
+    #                 plot_origin=True,
+    #                 gripper_openings=cgn_grasp_widths5)
+    # visualize_grasps(cgn_pcd_world6, cgn_grasp_poses_world6, cgn_grasp_scores6,
+    #                 window_name = 'ContactGraspNet 1+3',
+    #                 plot_origin=True,
+    #                 gripper_openings=cgn_grasp_widths6)
+    # visualize_grasps(cgn_pcd_world7, cgn_grasp_poses_world7, cgn_grasp_scores7,
+    #                 window_name = 'ContactGraspNet 1+2+3+4',
+    #                 plot_origin=True,
+    #                 gripper_openings=cgn_grasp_widths7)
+
     # also visualize grasps in mujoco
-    mjv_draw_grasps(viewer, cgn_grasp_poses_world1, rgba=[1,0,0, 0.25])
+    mjv_draw_grasps(viewer, cgn_grasp_poses_world1, widths=cgn_grasp_widths1, rgba=[1,0,0, 0.25])
     # mjv_draw_grasps(viewer, cgn_grasp_poses_world2, rgba=[0,1,0, 0.25])
     # mjv_draw_grasps(viewer, cgn_grasp_poses_world3, rgba=[0,0,1, 0.25])
     # mjv_draw_grasps(viewer, cgn_grasp_poses_world4, rgba=[0,0.7,1, 0.25])
@@ -252,7 +276,16 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     # edge_grasp_poses_world2, edge_grasp_scores2, edge_grasp_widths2, edge_pcd_world2 = edge_grasp.predict_scene_grasps(pcd_world2)
     # edge_grasp_poses_world3, edge_grasp_scores3, edge_grasp_widths3, edge_pcd_world3 = edge_grasp.predict_scene_grasps(pcd_world3)
     # edge_grasp_poses_world4, edge_grasp_scores4, edge_grasp_widths4, edge_pcd_world4 = edge_grasp.predict_scene_grasps(pcd_world4)
+
+    # edge_grasp_poses_world5, edge_grasp_scores5, edge_grasp_widths5, edge_pcd_world5 = edge_grasp.predict_scene_grasps(pcd_world+pcd_world2)
+    # edge_grasp_poses_world6, edge_grasp_scores6, edge_grasp_widths6, edge_pcd_world6 = edge_grasp.predict_scene_grasps(pcd_world+pcd_world3)
+    # edge_grasp_poses_world7, edge_grasp_scores7, edge_grasp_widths7, edge_pcd_world7 = edge_grasp.predict_scene_grasps(full_pcd_world)
+
     edge_toc = time.time() - edge_tic
+
+    edge_grasp_poses_world1 = edge_grasp_poses_world1[:GRASP_LIMIT]
+    edge_grasp_scores1 = edge_grasp_scores1[:GRASP_LIMIT]
+    edge_grasp_widths1 = edge_grasp_widths1[:GRASP_LIMIT]
 
     # visualize grasps
     # visualize_grasps(edge_pcd_world1, edge_grasp_poses_world1, edge_grasp_scores1,
@@ -272,8 +305,21 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     #                 plot_origin=True,
     #                 gripper_openings=edge_grasp_widths4)
 
+    # visualize_grasps(edge_pcd_world5, edge_grasp_poses_world5, edge_grasp_scores5,
+    #                 window_name = 'EdgeGrasp 1+2',
+    #                 plot_origin=True,
+    #                 gripper_openings=edge_grasp_widths5)
+    # visualize_grasps(edge_pcd_world6, edge_grasp_poses_world6, edge_grasp_scores6,
+    #                 window_name = 'EdgeGrasp 1+3',
+    #                 plot_origin=True,
+    #                 gripper_openings=edge_grasp_widths6)
+    # visualize_grasps(edge_pcd_world7, edge_grasp_poses_world7, edge_grasp_scores7,
+    #                 window_name = 'EdgeGrasp 1+2+3+4',
+    #                 plot_origin=True,
+    #                 gripper_openings=edge_grasp_widths7)
+
     # also visualize grasps in mujoco
-    mjv_draw_grasps(viewer, edge_grasp_poses_world1, rgba=[1, 0.6, 0.1, 0.25])
+    mjv_draw_grasps(viewer, edge_grasp_poses_world1, widths=edge_grasp_widths1, rgba=[1, 0.6, 0.1, 0.25])
     # mjv_draw_grasps(viewer, edge_grasp_poses_world2, rgba=[0,1,0, 0.25])
     # mjv_draw_grasps(viewer, edge_grasp_poses_world3, rgba=[0,0,1, 0.25])
     # mjv_draw_grasps(viewer, edge_grasp_poses_world4, rgba=[0,0.7,1, 0.25])
@@ -285,8 +331,8 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
 
 
 
-    # ### VN-EDGE GRASP ###
-    # # TODO: implement this
+    # # ### VN-EDGE GRASP ###
+    # # # TODO: implement this
 
 
     ### GRASPNESS ###
@@ -303,7 +349,17 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     # gsnet_grasp_poses_world2, gsnet_grasp_scores2, gsnet_grasp_widths2, gsnet_pcd_world2 = gsnet.predict_scene_grasps(pcd_world2, cam_extrinsics2)
     # gsnet_grasp_poses_world3, gsnet_grasp_scores3, gsnet_grasp_widths3, gsnet_pcd_world3 = gsnet.predict_scene_grasps(pcd_world3, cam_extrinsics3)
     # gsnet_grasp_poses_world4, gsnet_grasp_scores4, gsnet_grasp_widths4, gsnet_pcd_world4 = gsnet.predict_scene_grasps(pcd_world4, cam_extrinsics4)
+
+    # gsnet_grasp_poses_world5, gsnet_grasp_scores5, gsnet_grasp_widths5, gsnet_pcd_world5 = gsnet.predict_scene_grasps(pcd_world+pcd_world2, cam_extrinsics)
+    # gsnet_grasp_poses_world6, gsnet_grasp_scores6, gsnet_grasp_widths6, gsnet_pcd_world6 = gsnet.predict_scene_grasps(pcd_world+pcd_world3, cam_extrinsics)
+    # gsnet_grasp_poses_world7, gsnet_grasp_scores7, gsnet_grasp_widths7, gsnet_pcd_world7 = gsnet.predict_scene_grasps(full_pcd_world, cam_extrinsics)
+
     gsnet_toc = time.time() - gsnet_tic
+
+    gsnet_grasp_poses_world1 = gsnet_grasp_poses_world1[:GRASP_LIMIT]
+    gsnet_grasp_scores1 = gsnet_grasp_scores1[:GRASP_LIMIT]
+    gsnet_grasp_widths1 = gsnet_grasp_widths1[:GRASP_LIMIT]
+
     # visualize grasps
     # visualize_grasps(gsnet_pcd_world1, gsnet_grasp_poses_world1, gsnet_grasp_scores1,
     #                 window_name = 'Graspness',
@@ -321,8 +377,23 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     #                 window_name = 'Graspness4',
     #                 plot_origin=True,
     #                 gripper_openings=gsnet_grasp_widths4)
+
+    # visualize_grasps(gsnet_pcd_world5, gsnet_grasp_poses_world5, gsnet_grasp_scores5,
+    #                 window_name = 'Graspness5',
+    #                 plot_origin=True,
+    #                 gripper_openings=gsnet_grasp_widths5)
+    # visualize_grasps(gsnet_pcd_world6, gsnet_grasp_poses_world6, gsnet_grasp_scores6,
+    #                 window_name = 'Graspness6',
+    #                 plot_origin=True,
+    #                 gripper_openings=gsnet_grasp_widths6)
+    # visualize_grasps(gsnet_pcd_world7, gsnet_grasp_poses_world7, gsnet_grasp_scores7,
+    #                 window_name = 'Graspness7',
+    #                 plot_origin=True,
+    #                 gripper_openings=gsnet_grasp_widths7)
+
+
     # also visualize grasps in mujoco
-    mjv_draw_grasps(viewer, gsnet_grasp_poses_world1, rgba=[0.0, 1.0, 0.0, 0.25])
+    mjv_draw_grasps(viewer, gsnet_grasp_poses_world1, widths=gsnet_grasp_widths1, rgba=[0.0, 1.0, 0.0, 0.25])
     # mjv_draw_grasps(viewer, gsnet_grasp_poses_world2, rgba=[0,1,1, 0.25])
     # mjv_draw_grasps(viewer, gsnet_grasp_poses_world3, rgba=[0,0,1, 0.25])
     # mjv_draw_grasps(viewer, gsnet_grasp_poses_world4, rgba=[0,0.7,1, 0.25])
@@ -343,26 +414,32 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     # giga_grasp_poses_world3, giga_grasp_scores3, giga_grasp_widths3, giga_grasp_pcd3 = giganet.predict_scene_grasps(depth_array3, cam_intrinsics, cam_extrinsics3, pcd_world3)
     # giga_grasp_poses_world4, giga_grasp_scores4, giga_grasp_widths4, giga_grasp_pcd4 = giganet.predict_scene_grasps(depth_array4, cam_intrinsics, cam_extrinsics4, pcd_world4)
     giga_toc = time.time() - giga_tic
+
+    giga_grasp_poses_world1 = giga_grasp_poses_world1[:GRASP_LIMIT]
+    giga_grasp_scores1 = giga_grasp_scores1[:GRASP_LIMIT]
+    giga_grasp_widths1 = giga_grasp_widths1[:GRASP_LIMIT]
+
+
     # visualize grasps
-    # visualize_grasps(pcd_world+giga_grasp_pcd1, giga_grasp_poses_world1, giga_grasp_scores1,
+    # visualize_grasps(pcd_world, giga_grasp_poses_world1, giga_grasp_scores1,
     #                 window_name = 'GIGA',
     #                 plot_origin=True,
     #                 gripper_openings=giga_grasp_widths1)
-    # visualize_grasps(pcd_world+giga_grasp_pcd2, giga_grasp_poses_world2, giga_grasp_scores2,
+    # visualize_grasps(pcd_world2, giga_grasp_poses_world2, giga_grasp_scores2,
     #                 window_name = 'GIGA2',
     #                 plot_origin=True,
     #                 gripper_openings=giga_grasp_widths2)
-    # visualize_grasps(pcd_world+giga_grasp_pcd3, giga_grasp_poses_world3, giga_grasp_scores3,
+    # visualize_grasps(pcd_world3, giga_grasp_poses_world3, giga_grasp_scores3,
     #                 window_name = 'GIGA3',
     #                 plot_origin=True,
     #                 gripper_openings=giga_grasp_widths3)
-    # visualize_grasps(pcd_world+giga_grasp_pcd4, giga_grasp_poses_world4, giga_grasp_scores4,
+    # visualize_grasps(pcd_world4, giga_grasp_poses_world4, giga_grasp_scores4,
     #                 window_name = 'GIGA4',
     #                 plot_origin=True,
     #                 gripper_openings=giga_grasp_widths4)
     # TODO: visualize the estimated meshes too?
     # also visualize grasps in mujoco
-    mjv_draw_grasps(viewer, giga_grasp_poses_world1, rgba=[0,0.7,1, 0.5])
+    mjv_draw_grasps(viewer, giga_grasp_poses_world1, widths=giga_grasp_widths1, rgba=[0,0.7,1, 0.25])
     # mjv_draw_grasps(viewer, giga_grasp_poses_world2, rgba=[0,1,1, 0.25])
     # mjv_draw_grasps(viewer, giga_grasp_poses_world3, rgba=[0,0,1, 0.25])
     # mjv_draw_grasps(viewer, giga_grasp_poses_world4, rgba=[1,0,0, 0.25])
@@ -381,10 +458,12 @@ with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui
     print('Graspness: {:.3f} seconds.'.format(gsnet_toc))
     print('GIGA: {:.3f} seconds.'.format(giga_toc))
     # plotting
-    # plot_grasp_scores([cgn_grasp_scores1, edge_grasp_scores1, gsnet_grasp_scores1, giga_grasp_scores1], rgba=[(1,0,0), (1, 0.6, 0.1), (0,1,0), (0,0.7,1)])
-    # vis_grasps_many_planners(full_pcd_world,
-    #                         [cgn_grasp_poses_world1, edge_grasp_poses_world1, gsnet_grasp_poses_world1, giga_grasp_poses_world1],
-    #                         [(1,0,0), (1, 0.6, 0.1), (0,1,0), (0,0.7,1)])
+    plot_grasp_scores([cgn_grasp_scores1, edge_grasp_scores1, gsnet_grasp_scores1, giga_grasp_scores1],
+                        labels=['CGN', 'EDGE', 'GSN', 'GIGA'],
+                        rgba=[(1,0,0), (1, 0.6, 0.1), (0,1,0), (0,0.7,1)])
+    vis_grasps_many_planners(full_pcd_world,
+                            [cgn_grasp_poses_world1, edge_grasp_poses_world1, gsnet_grasp_poses_world1, giga_grasp_poses_world1],
+                            [(1,0,0), (1, 0.6, 0.1), (0,1,0), (0,0.7,1)])
 
     while viewer.is_running(): pass
 

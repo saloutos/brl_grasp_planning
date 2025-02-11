@@ -62,16 +62,17 @@ class ContactGraspNet:
         bb_dims1 = np.array(self.cfg['PC']['bb_dims_no_table'])
         bb_dims2 = np.array(self.cfg['PC']['bb_dims'])
         bb_offset = self.cfg['PC']['bb_offset']
-        # first, crop without the table to get (x,y) limits
-        workspace_bb1 = o3d.geometry.OrientedBoundingBox(bb_center, np.eye(3), bb_dims1)
-        pcd_crop = pcd_world.crop(workspace_bb1)
-        min_bound = pcd_crop.get_min_bound()
-        max_bound = pcd_crop.get_max_bound()
-        # set new (x,y) sizes based on these bounds, plus 10cm buffer
-        bb_center[0] = (min_bound[0]+max_bound[0])/2
-        bb_center[1] = (min_bound[1]+max_bound[1])/2
-        bb_dims2[0] = max_bound[0]-min_bound[0]+bb_offset
-        bb_dims2[1] = max_bound[1]-min_bound[0]+bb_offset
+        if self.cfg['PC']['crop_tight']:
+            # first, crop without the table to get (x,y) limits
+            workspace_bb1 = o3d.geometry.OrientedBoundingBox(bb_center, np.eye(3), bb_dims1)
+            pcd_crop = pcd_world.crop(workspace_bb1)
+            min_bound = pcd_crop.get_min_bound()
+            max_bound = pcd_crop.get_max_bound()
+            # set new (x,y) sizes based on these bounds, plus 10cm buffer
+            bb_center[0] = (min_bound[0]+max_bound[0])/2
+            bb_center[1] = (min_bound[1]+max_bound[1])/2
+            bb_dims2[0] = max_bound[0]-min_bound[0]+bb_offset
+            bb_dims2[1] = max_bound[1]-min_bound[0]+bb_offset
         workspace_bb2 = o3d.geometry.OrientedBoundingBox(bb_center, np.eye(3), bb_dims2)
         pcd_world = pcd_world.crop(workspace_bb2)
         # get cropped point cloud in camera frame as well
@@ -115,10 +116,11 @@ class ContactGraspNet:
 
         # apply masks
         grasp_mask = np.logical_and(up_dot_mask, z_height_mask)
-        pred_grasps_world = pred_grasps_world[grasp_mask]
-        scores = scores[grasp_mask]
-        contact_pts_world = contact_pts_world[grasp_mask]
-        gripper_openings = gripper_openings[grasp_mask]
+        if self.cfg['EVAL']['apply_geom_mask']:
+            pred_grasps_world = pred_grasps_world[grasp_mask]
+            scores = scores[grasp_mask]
+            contact_pts_world = contact_pts_world[grasp_mask]
+            gripper_openings = gripper_openings[grasp_mask]
 
         # limit number of grasps to return?
         if len(scores) > self.cfg['EVAL']['num_grasps_return']:

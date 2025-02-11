@@ -307,9 +307,10 @@ class GIGANet:
 
         # apply masks
         grasp_mask = np.logical_and(up_dot_mask, z_height_mask)
-        grasp_poses_array = grasp_poses_array[grasp_mask]
-        scores = scores[grasp_mask]
-        widths = widths[grasp_mask]
+        if self.cfg['apply_geom_mask']:
+            grasp_poses_array = grasp_poses_array[grasp_mask]
+            scores = scores[grasp_mask]
+            widths = widths[grasp_mask]
 
         # TODO: limit number of grasps here? set limit to 100?
         print("Final number of grasps:", len(sorted_grasps))

@@ -134,7 +134,12 @@ class EdgeGraspNet:
         # print('Depth proj:', depth_proj_mask.sum())
 
         # build geometry mask
-        geometry_mask = torch.all(torch.stack([up_dot_mask, rel_norm_mask, depth_proj_mask]), dim=0)
+        if self.cfg['EVAL']['apply_geom_mask']:
+            geometry_mask = torch.all(torch.stack([up_dot_mask, rel_norm_mask, depth_proj_mask]), dim=0)
+        else:
+            # geometry_mask = torch.ones_like(up_dot_mask, dtype=torch.bool)
+            # TODO: still apply distance masks?
+            torch.all(torch.stack([rel_norm_mask, depth_proj_mask]), dim=0)
         # print('All geometry:', geometry_mask.sum())
 
         # check table collisions based on z height

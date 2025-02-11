@@ -7,12 +7,18 @@ import mujoco.viewer
 from utils import *
 
 fnames = os.listdir('primitives/single_objects/fixed') # get list of all individual primitives
+print("Found {} primitives".format(len(fnames)))
+
 scene_path = os.path.join(get_base_path(), "scene", "scene.xml")
+
+# only panda compatible?
+only_panda = False
 
 # create model
 spec = mujoco.MjSpec.from_file(scene_path)
 
 # for each object, load it into the scene
+loaded = 0
 for j, obj in enumerate(fnames):
     with open('primitives/single_objects/fixed/'+obj, 'r') as file:
         data = yaml.load(file, Loader=yaml.FullLoader)
@@ -31,14 +37,29 @@ for j, obj in enumerate(fnames):
     data[obj_name]['pos'] = [new_x, new_y, new_z]
     # load object into mujoco scene
     conv_quat = Rotation.from_euler('zyx', data[obj_name]['rpy'], degrees=True).as_quat()
-    load_single_primitive(spec,
-                        obj_name,
-                        data[obj_name]['pos'],
-                        obj_type=obj_type,
-                        size=data[obj_name]['size'],
-                        mass=data[obj_name]['mass'],
-                        rgba=data[obj_name]['rgba'],
-                        quat=conv_quat)
+    if only_panda:
+        if data[obj_name]['panda_compat']:
+            load_single_primitive(spec,
+                                obj_name,
+                                data[obj_name]['pos'],
+                                obj_type=obj_type,
+                                size=data[obj_name]['size'],
+                                mass=data[obj_name]['mass'],
+                                rgba=data[obj_name]['rgba'],
+                                quat=conv_quat)
+            loaded += 1
+    else:
+        load_single_primitive(spec,
+                    obj_name,
+                    data[obj_name]['pos'],
+                    obj_type=obj_type,
+                    size=data[obj_name]['size'],
+                    mass=data[obj_name]['mass'],
+                    rgba=data[obj_name]['rgba'],
+                    quat=conv_quat)
+        loaded += 1
+
+print("Loaded {} primitives".format(loaded))
 
 # simulate until objects reach a steady state
 model = spec.compile()

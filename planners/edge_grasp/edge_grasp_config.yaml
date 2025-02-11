@@ -11,12 +11,14 @@ EVAL:
   approach_ball_rad: 0.05
   approach_ball_max_nn: 1024
 
+  apply_geom_mask: true
+
   up_dot_th: 0.1
   rel_norm_min: 0.005
   rel_norm_max: 0.035
   depth_proj_min: 0.005
   depth_proj_max: 0.035
-  check_gripper_collisions: True
+  check_gripper_collisions: true
   gripper_z_th: 0.001
   max_edges: 1000
   selection_th: 0.2

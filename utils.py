@@ -729,7 +729,7 @@ def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), plot_best=True, scores=N
             col[3] = 1.0
         elif plot_best:
             col = rgba
-            col[3] = 0.05
+            col[3] = 0.2
         else:
             col = rgba
 
@@ -763,7 +763,7 @@ def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), plot_best=True, scores=N
     viewer.sync()
 
 
-def plot_grasp_scores(scores, rgba=None):
+def plot_grasp_scores(scores, labels=None, rgba=None):
     plt.figure()
     if rgba is not None:
         plt.hist(scores, color=rgba, bins=np.arange(11)/10.0)
@@ -772,5 +772,7 @@ def plot_grasp_scores(scores, rgba=None):
     plt.ylabel('Frequency')
     plt.xlabel('Score')
     plt.title('Grasp Scores')
+    if labels is not None:
+        plt.legend(labels)
     plt.show()
     return
