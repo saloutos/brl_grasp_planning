@@ -275,7 +275,7 @@ class PandaGripperPlatform:
         # TODO: update this
         self.mj_data.ctrl = self.gr_data.get_ctrl(self.gr_data.all_idxs)
 
-    def capture_scene(self, cam_name):
+    def capture_scene(self, cam_name, add_noise=False):
 
         # need to make current every time
         self.gl_context.make_current()
@@ -326,6 +326,12 @@ class PandaGripperPlatform:
 
         # convert from raw depth to metric depth
         depth_array = z_near / (1 - depth_array * (1 - z_near / z_far))
+
+        ### ADD NOISE TO DEPTH IMAGE ###
+        # TODO: make this more realistic?
+        if add_noise:
+            depth_noise = np.random.normal(loc=0.0, scale=0.001, size=depth_array.shape)
+            depth_array += depth_noise
 
         # --- Process image --- #
         cam_xpos = self.mj_data.cam_xpos[cam_id]

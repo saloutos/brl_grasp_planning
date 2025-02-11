@@ -31,10 +31,10 @@ fsm_params.approach_offset = 0.1
 
 
 # dict of trajectory times for each state
-fsm_params.times = {'wait':     1.0,
+fsm_params.times = {'wait':     0.5,
                     'plan':     0.5,
-                    'approach': 0.5,
-                    'pregrasp': 0.5,
+                    'approach': 1.0,
+                    'pregrasp': 1.0,
                     'grasp':    1.0,
                     'lift':     1.0,
                     'hold':     1.0,

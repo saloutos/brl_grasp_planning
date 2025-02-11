@@ -35,7 +35,9 @@ class HoldObject(BaseState):
 
         # state transition to reset
         if (cur_time-self.start_time) > fsm_params.times['hold']:
-            next_state = "ReleaseObject"
+            # next_state = "ReleaseObject"
+            # go stright to reset
+            next_state = "Reset"
 
         # check for manual state transition to reset
         if GP.char_in=='R' or GP.char_in=='r':

@@ -729,7 +729,7 @@ def mjv_draw_grasps(viewer, grasps, cam_pose=np.eye(4), plot_best=True, scores=N
             col[3] = 1.0
         elif plot_best:
             col = rgba
-            col[3] = 0.2
+            col[3] = 0.1
         else:
             col = rgba
 
