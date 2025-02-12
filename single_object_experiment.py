@@ -25,6 +25,8 @@ from planners.giga.giga_model import GIGANet
 print("Starting init.")
 init_settings = termios.tcgetattr(sys.stdin)
 
+exp_tic = time.time()
+
 # Initialize GLFW
 glfw.init()
 
@@ -37,7 +39,7 @@ spec = mj.MjSpec.from_file(scene_path)
 obj_name = "box_7"
 obj_file = "primitives/single_objects/fixed/"+obj_name+".yaml"
 obj_pos = [0,0,0.08]
-obj_rpy = [0,0,30]
+obj_rpy = [90,30,30]
 load_objects_from_yaml(spec, obj_file, pos=obj_pos, rpy=obj_rpy)
 
 mj_model = spec.compile()
@@ -50,11 +52,29 @@ PandaGP.experiment_data = {}
 from controllers.execute_plan_panda.PandaGrabLiftFSM import PandaGrabLiftFSM
 controller = PandaGrabLiftFSM()
 
-# Contact Grasp Net
-with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
-    cgn_config = yaml.safe_load(f)
-CGN = ContactGraspNet(cgn_config)
-PandaGP.experiment_data['planner'] = 'CGN'
+# # Contact Grasp Net
+# with open('planners/contact_graspnet/cgn_config.yaml','r') as f:
+#     cgn_config = yaml.safe_load(f)
+# CGN = ContactGraspNet(cgn_config)
+# PandaGP.experiment_data['planner'] = 'CGN'
+
+# # Edge Grasp
+# with open('planners/edge_grasp/edge_grasp_config.yaml', 'r') as f:
+#     edge_grasp_config = yaml.safe_load(f)
+# EDGE = EdgeGraspNet(edge_grasp_config)
+# PandaGP.experiment_data['planner'] = 'EDGE'
+
+# # GS Net
+# with open('planners/graspness/graspness_config.yaml', 'r') as f:
+#     graspness_config = yaml.safe_load(f)
+# GSN = GraspnessNet(graspness_config)
+# PandaGP.experiment_data['planner'] = 'GSN'
+
+# GIGA
+with open('planners/giga/giga_config.yaml', 'r') as f:
+    giga_config = yaml.safe_load(f)
+GIGA = GIGANet(giga_config)
+PandaGP.experiment_data['planner'] = 'GIGA'
 
 # add variables to GP
 PandaGP.num_cycles = 0
@@ -67,17 +87,41 @@ PandaGP.ready_to_reset = False
 PandaGP.allow_reset = True # allow reset on startup
 
 # experiment parameters
-save_file = "single_object_experiment.dill"
-num_plans = 3
-num_perturbations = 0
+save_file = "single_object_experiment_box_7_2_giga.dill"
+num_plans = 30
+
+# perturbations, to be applied in grasp pose frame
+perturbations = [
+    create_SE3([-0.01, 0.0, 0.0]),
+    create_SE3([0.01, 0.0, 0.0]),
+    create_SE3([0.0, -0.01, 0.0]),
+    create_SE3([0.0, 0.01, 0.0]),
+    create_SE3([0.0, 0.0, -0.01]),
+    create_SE3([0.0, 0.0, 0.01]),
+    create_SE3([0.0, 0.0, 0.0], [-10, 0, 0]),
+    create_SE3([0.0, 0.0, 0.0], [10, 0, 0]),
+    create_SE3([0.0, 0.0, 0.0], [0, -10, 0]),
+    create_SE3([0.0, 0.0, 0.0], [0, 10, 0]),
+    create_SE3([0.0, 0.0, 0.0], [0, 0, -10]),
+    create_SE3([0.0, 0.0, 0.0], [0, 0, 10]),
+]
+num_perturbations = len(perturbations)
+
 total_cycles = num_plans*(1+num_perturbations)
 print("Number of grasps: {}, number of perturbations: {}, number of cycles: {}".format(num_plans, num_perturbations, total_cycles))
 
+PandaGP.plan_perturbation = 0
 PandaGP.experiment_data['obj_name'] = obj_name
 PandaGP.experiment_data['obj_pos'] = obj_pos
 PandaGP.experiment_data['obj_rpy'] = obj_rpy
 for i in range(total_cycles):
     PandaGP.experiment_data[i+1] = {}
+
+base_successes = []
+perturb_successes = []
+
+# turn off real time sim
+PandaGP.enforce_real_time_sim = False
 
 
 atexit.register(PandaGP.shutdown)
@@ -116,45 +160,74 @@ try:
             # check for planning flag
             if PandaGP.ready_to_plan:
                 PandaGP.ready_to_plan = False
-                # capture image of scene and create point cloud
-                render_start = time.time()
-                pcd_cam, pcd_world, cam_extrinsics, cam_intrinsics, rgb_array, depth_array = PandaGP.capture_scene("overhead_cam")
-                render_time = time.time() - render_start
-                print("Rendering completed in {:.2f} seconds.".format(render_time))
-                # run planning
-                plan_start = time.time()
-                grasp_poses_world, grasp_scores, grasp_widths, pcd_world_out = CGN.predict_scene_grasps(pcd_world, cam_extrinsics)
-                plan_time = time.time() - plan_start
-                # grasps are sorted by default, so can probably remove this argmax
-                best_grasp = np.argmax(grasp_scores)
-                best_score = grasp_scores[best_grasp]
-                best_width = grasp_widths[best_grasp]
-                best_pose = grasp_poses_world[best_grasp,:,:]
-                # save grasp pose
-                PandaGP.planned_poses['grasp_pose'] = copy.deepcopy(best_pose)
-                PandaGP.experiment_data[PandaGP.num_cycles].update({
-                    'grasp_pose': best_pose,
-                    'grasp_score': best_score,
-                    'grasp_width': best_width,
-                })
-                # finally, visualize the grasps
-                PandaGP.mj_viewer.user_scn.ngeom = 0
-                new_rgb = np.random.rand(3)
-                mjv_draw_grasps(PandaGP.mj_viewer, grasp_poses_world, plot_best=True, rgba=[new_rgb[0], new_rgb[1], new_rgb[2], 0.25])
-                print("Planning completed in {:.2f} seconds.".format(plan_time))
+                # check perturbation counter
+                if PandaGP.plan_perturbation == 0:
+                    # capture image of scene and create point cloud
+                    render_start = time.time()
+                    pcd_cam, pcd_world, cam_extrinsics, cam_intrinsics, rgb_array, depth_array = PandaGP.capture_scene("overhead_cam")
+                    render_time = time.time() - render_start
+                    print("Rendering completed in {:.2f} seconds.".format(render_time))
+                    # run planning
+                    plan_start = time.time()
+                    # grasp_poses_world, grasp_scores, grasp_widths, pcd_world_out = CGN.predict_scene_grasps(pcd_world, cam_extrinsics)
+                    # grasp_poses_world, grasp_scores, grasp_widths, pcd_world_out = EDGE.predict_scene_grasps(pcd_world)
+                    # grasp_poses_world, grasp_scores, grasp_widths, pcd_world_out = GSN.predict_scene_grasps(pcd_world, cam_extrinsics)
+                    grasp_poses_world, grasp_scores, grasp_widths, pcd_world_out = GIGA.predict_scene_grasps(depth_array, cam_intrinsics, cam_extrinsics, pcd_world)
+                    plan_time = time.time() - plan_start
+                    # grasps are sorted by default, so can probably remove this argmax
+                    best_grasp = np.argmax(grasp_scores)
+                    best_score = grasp_scores[best_grasp]
+                    best_width = grasp_widths[best_grasp]
+                    best_pose = grasp_poses_world[best_grasp,:,:]
+                    # save grasp pose
+                    PandaGP.planned_poses['grasp_pose'] = copy.deepcopy(best_pose)
+                    PandaGP.experiment_data[PandaGP.num_cycles].update({
+                        'perturbation': False,
+                        'grasp_pose': copy.deepcopy(best_pose),
+                        'grasp_score': copy.deepcopy(best_score),
+                        'grasp_width': copy.deepcopy(best_width),
+                    })
+                    # finally, visualize the grasps
+                    PandaGP.mj_viewer.user_scn.ngeom = 0
+                    new_rgb = np.random.rand(3)
+                    mjv_draw_grasps(PandaGP.mj_viewer, grasp_poses_world, plot_best=True, rgba=[new_rgb[0], new_rgb[1], new_rgb[2], 0.25])
+                    print("Planning completed in {:.2f} seconds.".format(plan_time))
+                    # incremement perturbation counter
+                    PandaGP.plan_perturbation += 1
+                else:
+                    print("Applying perturbation: ", PandaGP.plan_perturbation-1)
+                    # get best pose again
+                    new_pose = copy.deepcopy(best_pose)
+                    # TODO: make perturbations be SE(3) transforms
+                    new_pose =  np.matmul(new_pose, perturbations[PandaGP.plan_perturbation-1])
+
+                    # save grasp pose
+                    PandaGP.planned_poses['grasp_pose'] = copy.deepcopy(new_pose)
+                    PandaGP.experiment_data[PandaGP.num_cycles].update({
+                        'perturbation': True,
+                        'grasp_pose': copy.deepcopy(new_pose),
+                        'grasp_score': copy.deepcopy(best_score),
+                        'grasp_width': copy.deepcopy(best_width),
+                    })
+                    # finally, visualize the grasps
+                    PandaGP.mj_viewer.user_scn.ngeom = 0
+                    mjv_draw_grasps(PandaGP.mj_viewer, [new_pose, best_pose], rgba=[new_rgb[0], new_rgb[1], new_rgb[2], 0.25])
+                    # increment perturbation counter, check for roll over
+                    PandaGP.plan_perturbation += 1
+                    if PandaGP.plan_perturbation > num_perturbations:
+                        PandaGP.plan_perturbation = 0
                 # set flag to true
                 PandaGP.plan_complete = True
             # check for reset flag
             if PandaGP.ready_to_reset:
                 PandaGP.ready_to_reset = False
                 print("Saving data.")
-                print("")
                 # save experiment data
                 # have to define success here
 
                 # check object height
                 obj_height = PandaGP.mj_data.body(obj_name).xpos[2]
-                if obj_height > 0.05:
+                if obj_height > 0.1:
                     success = 1
                 else:
                     success = 0
@@ -165,6 +238,12 @@ try:
                     'obj_height': obj_height,
                 })
 
+                if PandaGP.plan_perturbation == 1:
+                    base_successes.append(success)
+                else:
+                    perturb_successes.append(success)
+
+                print("")
                 # set flag to true
                 PandaGP.allow_reset = True
 
@@ -176,6 +255,13 @@ try:
     #     data = dill.load(f)
     # print(PandaGP.experiment_data)
     # print(data)
+
+    print("Base Successes: ", sum(base_successes), "/", len(base_successes))
+    print("Perturbation Successes: ", sum(perturb_successes), "/", len(perturb_successes))
+    print("All successes: ", sum(base_successes) + sum(perturb_successes), "/", len(base_successes) + len(perturb_successes))
+
+    exp_toc = time.time() - exp_tic
+    print("Experiment completed in {:.2f} seconds.".format(exp_toc))
 
 # end experiment
 finally:

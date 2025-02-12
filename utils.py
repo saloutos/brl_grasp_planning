@@ -10,6 +10,37 @@ import yaml
 from scipy.spatial.transform import Rotation
 # import skimage.transform
 
+
+
+
+# TODO: fix this up a little bit
+def create_SE3(trans=None, rpy=None):
+    """
+    Create a 4x4 SE3 matrix from translation and rotation vectors.
+
+    Args:
+        translation (list): A list of three elements representing the translation vector.
+        rotation (list): A list of three elements representing the rotation vector, RPY in deg.
+
+    Returns:
+        np.ndarray: A 4x4 SE3 matrix.
+    """
+    # Create a 4x4 identity matrix
+    se3_matrix = np.eye(4)
+
+    # Set the translation part
+    if trans is not None:
+        se3_matrix[:3, 3] = trans
+
+    # Set the rotation part
+    if rpy is not None:
+        se3_matrix[:3, :3] = Rotation.from_euler('zyx', rpy, degrees=True).as_matrix()
+
+    return se3_matrix
+
+
+
+
 # TODO: get rid of this function
 def get_base_path():
     file_path = os.path.abspath(__file__)

@@ -36,7 +36,7 @@ spec = mujoco.MjSpec.from_file(scene_path)
 
 # load_random_grid_fixed_primitives(spec, 4)
 
-load_objects_from_yaml(spec, 'primitives/collections/scene_9.yaml')
+load_objects_from_yaml(spec, 'primitives/collections/panda_graspable/scene_4.yaml')
 
 model = spec.compile()
 data = mujoco.MjData(model)
