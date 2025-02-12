@@ -214,11 +214,12 @@ class EdgeGraspNet:
                 grasp_scores = grasp_scores[sort_idx]
                 gripper_widths = gripper_widths[sort_idx]
 
+            print('Number of grasps selected: ', len(grasp_scores))
         else:
             grasp_scores, gripper_widths = [0], [0]
             pred_grasps = np.expand_dims(np.eye(4), axis=0)
+            print('Could not select a grasp')
 
-        print('Number of grasps selected: ', len(grasp_scores))
         return pred_grasps, grasp_scores, gripper_widths, pc_input
 
 

@@ -1,7 +1,12 @@
 checkpoint_path: 'planners/graspness/checkpoints/minkuresunet_realsense.tar'
 
 bb_center: [0.0, 0.0, 0.2]
-bb_dims: [0.7, 0.6, 0.38]
+bb_dims: [0.7, 0.6, 0.42]
+
+crop_tight: true
+bb_dims_no_table: [0.7, 0.6, 0.35]
+bb_offset: 0.1
+
 voxel_size_ds: 0.004
 
 # collision detection between gripper and point cloud

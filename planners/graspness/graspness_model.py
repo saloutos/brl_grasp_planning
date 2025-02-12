@@ -136,9 +136,17 @@ class GraspnessNet:
         # apply masks
         grasp_mask = np.logical_and(up_dot_mask, z_height_mask)
         if self.cfg['apply_geom_mask']:
-            pred_grasps_world = pred_grasps_world[grasp_mask]
-            scores = scores[grasp_mask]
-            gripper_openings = gripper_openings[grasp_mask]
+            masked_pred_grasps_world = pred_grasps_world[grasp_mask]
+            masked_scores = scores[grasp_mask]
+            masked_gripper_openings = gripper_openings[grasp_mask]
+
+            if len(masked_scores) == 0:
+                print("No grasps left after applying geometric mask.")
+                return pred_grasps_world[0:1], scores[0:1], gripper_openings[0:1], pcd_world
+            else:
+                pred_grasps_world = masked_pred_grasps_world
+                scores = masked_scores
+                gripper_openings = masked_gripper_openings
 
         # trim list if it is too long
         num_grasp_limit = self.cfg['num_grasp_limit']
@@ -222,6 +230,12 @@ class GraspNetModel(nn.Module):
         graspness_score = end_points['graspness_score'].squeeze(1)
         objectness_pred = torch.argmax(objectness_score, 1)
         objectness_mask = (objectness_pred == 1)
+
+        # check if objectness mask is empty, if so set it to all ones?
+        if objectness_mask[0].sum() == 0:
+            print("Empty objectness mask, setting to all ones")
+            objectness_mask[0] = torch.ones_like(objectness_mask[0])
+
         graspness_mask = graspness_score > GRASPNESS_THRESHOLD
         graspable_mask = objectness_mask & graspness_mask
 

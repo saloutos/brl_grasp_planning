@@ -7,3 +7,5 @@ ycb/
 planners/graspness/checkpoints/
 
 *.dill
+
+logs/

@@ -263,6 +263,11 @@ try:
     exp_toc = time.time() - exp_tic
     print("Experiment completed in {:.2f} seconds.".format(exp_toc))
 
+    # close viewer
+    PandaGP.mj_viewer.close()
+    # close glfw
+    # glfw.terminate()
+
 # end experiment
 finally:
     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, init_settings)

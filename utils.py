@@ -227,6 +227,7 @@ def load_single_primitive(spec: mujoco.MjSpec,
     # geom.margin = 0
     # geom.gap = 0
     # NOTE: for free joint, won't have pos and axis, joint limits, or friction
+    joint.name = name
     joint.group = 2
     joint.stiffness = 0
     joint.damping = 0

@@ -221,8 +221,9 @@ class GIGANet:
             grasp_pts = np.asarray(grasp_pts)
             grasp_colors = np.asarray(grasp_colors)
             grasp_pcd = o3d.geometry.PointCloud()
-            grasp_pcd.points = o3d.utility.Vector3dVector(grasp_pts)
-            grasp_pcd.colors = o3d.utility.Vector3dVector(grasp_colors)
+            if len(grasp_pts) > 0:
+                grasp_pcd.points = o3d.utility.Vector3dVector(grasp_pts)
+                grasp_pcd.colors = o3d.utility.Vector3dVector(grasp_colors)
 
             # for debugging, show pcd
             # o3d.visualization.draw_geometries([grasp_pcd, scene_meshes[t]])
